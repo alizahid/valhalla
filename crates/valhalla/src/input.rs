@@ -12,15 +12,17 @@
 //! editing brings in focus / cursor / IME concerns that are best done after
 //! we've confirmed the rest of the loop renders pixels correctly.
 
+use std::sync::Arc;
+
 use gpui::{div, prelude::*, AnyElement, MouseButton, SharedString};
 
 use crate::events;
-use crate::runtime::RootView;
+use crate::runtime::JsHost;
 use crate::scene::{ElementProps, NodeId};
 use crate::style;
 use crate::tailwind;
 
-pub fn render_input(id: NodeId, props: &ElementProps, view: &RootView) -> AnyElement {
+pub fn render_input(id: NodeId, props: &ElementProps, js: &Arc<JsHost>) -> AnyElement {
     let _ = id;
 
     let value = props
@@ -47,10 +49,8 @@ pub fn render_input(id: NodeId, props: &ElementProps, view: &RootView) -> AnyEle
     el = style::apply(el, &props.style);
     el = el.child(display);
 
-    // onClick still works — useful for the "focus to type" gesture even
-    // before TextField integration lands.
     if let Some(&hid) = props.handlers.get("onClick") {
-        let js = view.js.clone();
+        let js = js.clone();
         el = el.on_mouse_down(MouseButton::Left, move |_event, _window, _cx| {
             let _ = events::dispatch(&js, hid, serde_json::json!({}));
         });

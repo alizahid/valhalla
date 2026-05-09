@@ -1,11 +1,11 @@
 [package]
-name = "counter"
+name = "kanban"
 version.workspace = true
 edition.workspace = true
 publish = false
 
 [[bin]]
-name = "counter"
+name = "kanban"
 path = "src/main.rs"
 
 [dependencies]

@@ -1,69 +1,88 @@
 //! Walk `SceneTree` and produce GPUI elements.
+//!
+//! Each element node has a `tag` string set by the JS-side React component
+//! wrapper. We dispatch on it here. Unknown tags fall through to a `view`
+//! renderer so future primitives can be added in JS first without breaking
+//! the host.
 
-use gpui::{div, prelude::*, AnyElement, MouseButton, SharedString};
+use std::sync::Arc;
 
-use crate::events;
-use crate::runtime::RootView;
+use gpui::{div, prelude::*, AnyElement, App, SharedString, Window};
+
+use crate::runtime::{JsHost, RootView};
 use crate::scene::{ElementProps, Node, NodeId, SceneTree};
-use crate::style;
-use crate::tailwind;
+use crate::widgets;
 
-pub fn render_root(this: &mut RootView) -> impl IntoElement {
-    let root_id = this.scene.root();
+pub fn render_root(this: &mut RootView, window: &mut Window, cx: &mut App) -> AnyElement {
     let mut container = div().size_full();
-
-    if let Some(id) = root_id {
-        let element = render_node(&this.scene, id, this);
+    if let Some(id) = this.scene.root() {
+        let element = render_node(&this.scene, id, &this.js, window, cx);
         container = container.child(element);
     } else {
-        container = container.child(div().child(SharedString::from(
+        container = container.child(SharedString::from(
             "[valhalla] no root rendered yet — bundle is loading.",
-        )));
+        ));
     }
-    container
+    container.into_any_element()
 }
 
-fn render_node(scene: &SceneTree, id: NodeId, view: &RootView) -> AnyElement {
+fn render_node(
+    scene: &SceneTree,
+    id: NodeId,
+    js: &Arc<JsHost>,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyElement {
     match scene.get(id) {
         Some(Node::Text { value }) => SharedString::from(value.clone()).into_any_element(),
+
         Some(Node::Element {
             tag,
             props,
             children,
-        }) => {
-            if tag == "input" {
-                return crate::input::render_input(id, props, view);
-            }
-            render_div(scene, props, children, view)
-        }
+        }) => render_element(scene, id, tag, props, children, js, window, cx),
+
         None => div().into_any_element(),
     }
 }
 
-fn render_div(
+fn render_element(
     scene: &SceneTree,
+    node_id: NodeId,
+    tag: &str,
     props: &ElementProps,
     children: &[NodeId],
-    view: &RootView,
+    js: &Arc<JsHost>,
+    window: &mut Window,
+    cx: &mut App,
 ) -> AnyElement {
-    let mut el = div();
-    for op in tailwind::parse(&props.classes) {
-        el = op(el);
-    }
-    el = style::apply(el, &props.style);
+    // Resolve children up-front so each widget renderer receives a Vec it
+    // can drop into `.children(...)`. This pulls each child through the
+    // walk recursively.
+    let rendered_children: Vec<AnyElement> = children
+        .iter()
+        .map(|&id| render_node(scene, id, js, window, cx))
+        .collect();
 
-    if let Some(&hid) = props.handlers.get("onClick") {
-        let js = view.js.clone();
-        el = el.on_mouse_down(MouseButton::Left, move |_event, _window, _cx| {
-            if let Err(err) = events::dispatch(&js, hid, serde_json::json!({})) {
-                log::warn!("[valhalla] dispatch error: {}", err);
-            }
-        });
-    }
+    match tag {
+        // Layout / structural primitives.
+        "view" | "div" => widgets::render_view(props, rendered_children, js),
+        "pressable" => widgets::render_pressable(node_id, props, rendered_children, js),
+        "text" | "span" => widgets::render_text(props, rendered_children),
+        "scrollview" => widgets::render_scrollview(node_id, props, rendered_children),
 
-    for &child in children {
-        el = el.child(render_node(scene, child, view));
-    }
+        // gpui-component widgets.
+        "button" => widgets::render_button(node_id, props, js, window, cx),
+        "checkbox" => widgets::render_checkbox(node_id, props, js),
+        "switch" => widgets::render_switch(node_id, props, js),
+        "divider" => widgets::render_divider(props),
+        "badge" => widgets::render_badge(props, rendered_children),
 
-    el.into_any_element()
+        // Text input — still stubbed (renders the value as static text).
+        "textinput" | "input" => crate::input::render_input(node_id, props, js),
+
+        // Unknown tag: render as a view so a typo or future primitive doesn't
+        // make the whole window go blank.
+        _ => widgets::render_view(props, rendered_children, js),
+    }
 }

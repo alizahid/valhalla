@@ -17,6 +17,7 @@ mod runtime;
 mod scene;
 mod style;
 mod tailwind;
+mod widgets;
 
 /// Re-exports for the headless smoke-test binary. Not part of the public API.
 #[doc(hidden)]

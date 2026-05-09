@@ -60,8 +60,8 @@ impl RootView {
 }
 
 impl Render for RootView {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        crate::render::render_root(self)
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        crate::render::render_root(self, window, cx)
     }
 }
 
@@ -94,6 +94,9 @@ pub(crate) fn launch(
     eval_bundle(&js, resolved, &bridge)?;
 
     Application::new().run(move |cx: &mut GpuiApp| {
+        // Set up gpui-component's themes / fonts before any widget is built.
+        gpui_component::init(cx);
+
         let bounds = Bounds::centered(None, size(px(window_size.0), px(window_size.1)), cx);
         let opts = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),

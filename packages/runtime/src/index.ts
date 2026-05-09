@@ -5,7 +5,32 @@ import "./events";
 import "./hmr";
 
 export { createRoot, type Root } from "./host";
-export { TextInput, View, type KeyEvent, type TextInputProps, type ViewProps } from "./components";
+export {
+    Badge,
+    Button,
+    Checkbox,
+    Divider,
+    Pressable,
+    ScrollView,
+    Switch,
+    Text,
+    TextInput,
+    View,
+    type BadgeProps,
+    type ButtonProps,
+    type ButtonSize,
+    type ButtonVariant,
+    type CheckboxProps,
+    type ClickEvent,
+    type DividerProps,
+    type KeyEvent,
+    type PressableProps,
+    type ScrollViewProps,
+    type SwitchProps,
+    type TextInputProps,
+    type TextProps,
+    type ViewProps,
+} from "./components";
 
 // Re-export React itself so consumers can use one import root if they want.
 // Their own `react` install is what wins at bundle time — this is mostly a

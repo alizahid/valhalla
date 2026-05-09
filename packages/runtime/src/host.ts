@@ -76,15 +76,31 @@ function extractStyle(props: any): Record<string, unknown> {
     return s;
 }
 
-const ATTR_KEYS = ["value", "placeholder", "type", "autoFocus", "disabled"] as const;
+// Anything that isn't a known structural prop, an event handler, or a
+// non-serializable value gets shipped to Rust as an attribute. Widgets pull
+// the keys they care about; the rest are ignored on the Rust side.
+const STRUCTURAL_KEYS = new Set([
+    "children",
+    "className",
+    "style",
+    "key",
+    "ref",
+]);
 
 function extractAttrs(props: any): Record<string, unknown> {
     const out: Record<string, unknown> = {};
-    for (const key of ATTR_KEYS) {
+    for (const key in props) {
+        if (STRUCTURAL_KEYS.has(key)) continue;
+        if (key.startsWith("on")) continue;
         const v = props[key];
-        if (v !== undefined && v !== null && typeof v !== "function") {
+        if (v === undefined || v === null) continue;
+        const t = typeof v;
+        if (t === "function") continue;
+        if (t === "string" || t === "number" || t === "boolean") {
             out[key] = v;
         }
+        // Plain objects / arrays are skipped — widgets that need richer attrs
+        // can be added on a per-tag basis later.
     }
     return out;
 }

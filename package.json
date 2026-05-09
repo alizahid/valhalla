@@ -9,8 +9,8 @@
         "build:runtime": "bun --filter @valhalla/runtime build",
         "build:plugin": "bun --filter @valhalla/vite build",
         "build:packages": "bun run build:runtime && bun run build:plugin",
-        "build:counter": "bun --filter counter build",
-        "dev:counter": "bun --filter counter dev"
+        "build:kanban": "bun --filter kanban build",
+        "dev:kanban": "bun --filter kanban dev"
     },
     "devDependencies": {
         "typescript": "^5.5.0"

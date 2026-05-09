@@ -21,19 +21,22 @@ fn main() -> anyhow::Result<()> {
 ```tsx
 // my-app/src/App.tsx
 import { useState } from "react";
-import { TextInput } from "@valhalla/runtime";
+import { Button, Switch, Text, View } from "@valhalla/runtime";
 
 export default function App() {
+    const [enabled, setEnabled] = useState(false);
     const [n, setN] = useState(0);
     return (
-        <div className="flex flex-col items-center justify-center gap-4 p-8 size-full bg-slate-900">
-            <div className="text-3xl text-white">Count: {n}</div>
-            <button className="px-4 py-2 rounded bg-blue-500 text-white"
-                    onClick={() => setN(n + 1)}>+</button>
-        </div>
+        <View className="flex flex-col items-center justify-center gap-4 p-8 size-full bg-slate-900">
+            <Text className="text-3xl text-white">Count: {n}</Text>
+            <Switch checked={enabled} onValueChange={setEnabled} label="Auto-increment" />
+            <Button label="Add one" variant="primary" onPress={() => setN(n + 1)} />
+        </View>
     );
 }
 ```
+
+Components are React-Native-style primitives: `View`, `Text`, `Pressable`, `Button`, `TextInput`, `Checkbox`, `Switch`, `ScrollView`, `Divider`, `Badge`. Each maps to a host element name the Rust render walk dispatches on, so adding a new primitive is a TS export + a Rust renderer.
 
 ## Architecture
 
@@ -65,29 +68,50 @@ The user originally suggested Hermes. Research showed no production-grade Rust e
 crates/valhalla/         publishable Rust crate (the runtime)
 packages/runtime/        @valhalla/runtime — HostConfig, components, hooks
 packages/vite-plugin/    @valhalla/vite — Vite plugin for build + dev
-examples/counter/        the demo app (Cargo bin + React)
+examples/kanban/         the demo app (Cargo bin + React)
 ```
+
+## Primitives
+
+`@valhalla/runtime` exports React-Native-shaped primitives. Each is a tag-based host element the Rust render walk dispatches on:
+
+| Component | Tag | Renderer |
+|---|---|---|
+| `View` | `view` | GPUI `div` |
+| `Text` | `text` | GPUI `div` styled as text |
+| `Pressable` | `pressable` | GPUI `div` with `cursor_pointer` + click |
+| `Button` | `button` | `gpui_component::Button` (variants: `primary`, `secondary`, `ghost`, `outline`, `danger`, `link`) |
+| `TextInput` | `textinput` | (V1: read-only display; gpui-component TextField integration is next) |
+| `Checkbox` | `checkbox` | `gpui_component::Checkbox` |
+| `Switch` | `switch` | `gpui_component::Switch` |
+| `ScrollView` | `scrollview` | GPUI `div.overflow_{x,y}_scroll` |
+| `Divider` | `divider` | `gpui_component::Divider` |
+| `Badge` | `badge` | Styled `div` with variant palette |
+
+Adding a new primitive is a TS export (`createElement("foo", props)`) plus a Rust renderer (`match tag { "foo" => render_foo(...) }`).
 
 ## What works today
 
 The headless smoke test loads the bundle, runs React, captures every op:
 
 ```
-$ cd examples/counter && bun run build
-$ cd ../.. && cargo run -p valhalla --bin valhalla-headless -- examples/counter/dist/bundle.js
+$ cd examples/kanban && bun run build
+$ cd ../.. && cargo run -p valhalla --bin valhalla-headless -- examples/kanban/dist/bundle.js
 ```
+
+The Kanban demo renders into **534 mutation ops** on initial mount — three columns of cards, a header with switches, a detail panel with priority buttons + a checkbox, and a stats badge. Clicking a Switch (e.g. "Sort by priority") dispatches into JS, fires `setState`, re-renders, and emits the diff back as new ops (~143 in that case).
 
 This validates, end-to-end:
 
-- Vite produces a single ES2020 IIFE bundle (1.3 MB) including React 19, react-reconciler, our `@valhalla/runtime`, and the user's `App.tsx`.
+- Vite produces a single ES2020 IIFE bundle (~1.4 MB) including React 19, react-reconciler, our `@valhalla/runtime`, and the user's `App.tsx`.
 - rquickjs evaluates the bundle (with a tiny browser-globals shim for `setTimeout`, `console`, etc.).
 - React renders `<App />`. The reconciler walks the tree.
 - Our HostConfig pushes mutation ops into a buffer, flushes once per commit via `__host_commit`.
 - Rust deserializes ops into typed `Op` values.
 - `SceneTree::apply` builds the mirror tree.
-- Synthetic dispatch: calling `__dispatchEvent(handlerId, payload)` from Rust fires the React handler, which calls `setState`, which causes a re-render, which produces new ops back into the inbox. The `Count: 0` text becomes `Count: 1`.
+- Synthetic dispatch: calling `__dispatchEvent(handlerId, payload)` from Rust fires the React handler, which calls `setState`, which produces follow-up ops into the inbox.
 
-The `counter` binary itself (`cargo run -p counter`) compiles against `gpui` and `gpui-component` and opens a window — that part can't be visually verified in CI but the type contract is right.
+The `kanban` binary itself (`cargo run -p kanban`) compiles against `gpui` and `gpui-component` and opens a window — that part can't be visually verified in CI but the type contract is right.
 
 ## What's stubbed (next up)
 
