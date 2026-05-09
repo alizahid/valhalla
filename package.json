@@ -1,0 +1,18 @@
+{
+    "name": "valhalla-monorepo",
+    "private": true,
+    "workspaces": [
+        "packages/*",
+        "examples/*"
+    ],
+    "scripts": {
+        "build:runtime": "bun --filter @valhalla/runtime build",
+        "build:plugin": "bun --filter @valhalla/vite build",
+        "build:packages": "bun run build:runtime && bun run build:plugin",
+        "build:counter": "bun --filter counter build",
+        "dev:counter": "bun --filter counter dev"
+    },
+    "devDependencies": {
+        "typescript": "^5.5.0"
+    }
+}

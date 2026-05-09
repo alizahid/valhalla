@@ -1,0 +1,31 @@
+[package]
+name = "valhalla"
+description = "React for the desktop, rendered through GPUI"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+gpui              = { workspace = true }
+gpui-component    = { workspace = true }
+rquickjs          = { workspace = true }
+serde             = { workspace = true }
+serde_json        = { workspace = true }
+anyhow            = { workspace = true }
+ureq              = { workspace = true, optional = true }
+tungstenite       = { workspace = true, optional = true }
+parking_lot       = { workspace = true }
+crossbeam-channel = { workspace = true }
+log               = { workspace = true }
+env_logger        = { workspace = true }
+
+[features]
+default = ["dev-loader"]
+# Enables the Vite HTTP module loader and HMR WebSocket bridge.
+# Off this feature, only Bundle::Embedded and Bundle::File compile.
+dev-loader = ["dep:ureq", "dep:tungstenite"]
+
+[[bin]]
+name = "valhalla-headless"
+path = "src/bin/headless.rs"
