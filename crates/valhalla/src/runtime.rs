@@ -12,7 +12,9 @@ use gpui::{
     WindowOptions,
 };
 use parking_lot::Mutex;
-use rquickjs::{Context as JsContext, Function, Runtime as JsRuntime};
+use rquickjs::{
+    CatchResultExt, CaughtError, Context as JsContext, Function, Runtime as JsRuntime,
+};
 
 use crate::events::HandlerTable;
 use crate::loader::{Bundle, ResolvedBundle};
@@ -91,6 +93,7 @@ pub(crate) fn launch(
     let js = Arc::new(JsHost::new()?);
 
     install_host_functions(&js, &bridge)?;
+    install_browser_shims(&js)?;
     eval_bundle(&js, resolved, &bridge)?;
 
     // `gpui_platform::application()` is the modern constructor — it picks
@@ -166,10 +169,7 @@ fn eval_bundle(
     let _ = bridge; // used in the Live arm below
     match resolved {
         ResolvedBundle::Source(src) => {
-            js.context.with(|ctx| -> rquickjs::Result<()> {
-                ctx.eval::<(), _>(src.as_bytes())?;
-                Ok(())
-            })?;
+            eval_source(js, &src)?;
             // Pump any pending microtasks (Promises, react-reconciler scheduler).
             while js.runtime.is_job_pending() {
                 js.runtime
@@ -185,11 +185,57 @@ fn eval_bundle(
             let shim = r#"
                 __host_log("[valhalla] dev-mode bundle entry not yet implemented; shipping production build for now.");
             "#;
-            js.context.with(|ctx| -> rquickjs::Result<()> {
-                ctx.eval::<(), _>(shim.as_bytes())?;
-                Ok(())
-            })?;
+            eval_source(js, shim)?;
             Ok(())
         }
     }
+}
+
+/// Eval a JS source string and surface any thrown exception with its
+/// stack trace, not just rquickjs's wrapper.
+fn eval_source(js: &Arc<JsHost>, src: &str) -> anyhow::Result<()> {
+    js.context.with(|ctx| -> anyhow::Result<()> {
+        match ctx.eval::<(), _>(src.as_bytes()).catch(&ctx) {
+            Ok(()) => Ok(()),
+            Err(CaughtError::Exception(exc)) => {
+                let msg = exc.message().unwrap_or_default();
+                let stack = exc.stack().unwrap_or_default();
+                anyhow::bail!("JS exception: {}\n{}", msg, stack);
+            }
+            Err(other) => anyhow::bail!("JS error: {:?}", other),
+        }
+    })
+}
+
+/// Browser-ish globals the React bundle expects: setTimeout, queueMicrotask,
+/// console. rquickjs ships none of these by default. Same prelude as the
+/// headless smoke test uses; they must stay in sync.
+fn install_browser_shims(js: &Arc<JsHost>) -> anyhow::Result<()> {
+    let prelude = r#"
+        (function() {
+            globalThis.queueMicrotask = (cb) => {
+                Promise.resolve().then(cb);
+            };
+            globalThis.setTimeout = (cb, _ms) => {
+                Promise.resolve().then(cb);
+                return 0;
+            };
+            globalThis.clearTimeout = () => {};
+            globalThis.setInterval = (cb, _ms) => 0;
+            globalThis.clearInterval = () => {};
+            const stringify = (v) => {
+                try { return typeof v === 'string' ? v : JSON.stringify(v); }
+                catch { return String(v); }
+            };
+            const fmt = (args) => Array.from(args).map(stringify).join(' ');
+            globalThis.console = {
+                log:   (...args) => __host_log(fmt(args)),
+                info:  (...args) => __host_log(fmt(args)),
+                warn:  (...args) => __host_log('[warn] '  + fmt(args)),
+                error: (...args) => __host_log('[error] ' + fmt(args)),
+                debug: (...args) => __host_log('[debug] ' + fmt(args)),
+            };
+        })();
+    "#;
+    eval_source(js, prelude)
 }
