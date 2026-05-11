@@ -16,10 +16,11 @@ use gpui_component::{
     checkbox::Checkbox as GpuiCheckbox,
     divider::Divider as GpuiDivider,
     switch::Switch as GpuiSwitch,
-    Disableable, Sizable, Size,
+    Disableable, Icon as GpuiIcon, Sizable, Size,
 };
 
 use crate::events;
+use crate::icons::parse_icon_name;
 use crate::runtime::JsHost;
 use crate::scene::{ElementProps, NodeId};
 use crate::style;
@@ -200,13 +201,8 @@ pub fn render_button(
     _window: &mut Window,
     _cx: &mut App,
 ) -> AnyElement {
-    let label = attr_str(props, "label").map(|s| s.to_string()).or_else(|| {
-        // Fall back to the first text-node child if no `label` prop. The
-        // render walk will have stringified single text children for us;
-        // for now we only honour the explicit prop. Mixed content
-        // (`<Button><Icon />Save</Button>`) is V2.
-        None
-    });
+    let label = attr_str(props, "label").map(|s| s.to_string());
+    let icon = attr_str(props, "icon").and_then(parse_icon_name);
     let variant = attr_str(props, "variant").unwrap_or("primary");
     let size = attr_str(props, "size").unwrap_or("md");
     let disabled = attr_bool(props, "disabled");
@@ -214,6 +210,9 @@ pub fn render_button(
     let mut btn = GpuiButton::new(element_id(node_id, "btn"));
     if let Some(label) = label {
         btn = btn.label(SharedString::from(label));
+    }
+    if let Some(icon) = icon {
+        btn = btn.icon(icon);
     }
     btn = match variant {
         "secondary" => btn.outline(),
@@ -245,6 +244,33 @@ pub fn render_button(
     }
 
     btn.into_any_element()
+}
+
+// ─── icon ────────────────────────────────────────────────────────────────
+
+pub fn render_icon(props: &ElementProps) -> AnyElement {
+    let name = match attr_str(props, "name").and_then(parse_icon_name) {
+        Some(n) => n,
+        None => {
+            // Unknown / missing — render an empty box so the layout doesn't
+            // collapse and the typo is visually obvious.
+            return GpuiIcon::empty().into_any_element();
+        }
+    };
+    let size = attr_str(props, "size").unwrap_or("md");
+
+    let mut icon = GpuiIcon::new(name);
+    icon = match size {
+        "xs" => icon.with_size(Size::XSmall),
+        "sm" => icon.with_size(Size::Small),
+        "lg" => icon.with_size(Size::Large),
+        _ => icon.with_size(Size::Medium),
+    };
+    // Classes / style still apply via gpui_component::Icon's Styled impl,
+    // but our tailwind/style appliers only target `Div`. Plain class-based
+    // colouring on an Icon is V2; for now `Icon` ignores className/style.
+    let _ = (&props.classes, &props.style);
+    icon.into_any_element()
 }
 
 // ─── checkbox (gpui-component) ───────────────────────────────────────────

@@ -10,6 +10,7 @@ pub use anyhow;
 pub use gpui;
 
 mod events;
+mod icons;
 mod input;
 mod loader;
 mod render;

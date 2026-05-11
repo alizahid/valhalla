@@ -87,6 +87,7 @@ examples/kanban/         the demo app (Cargo bin + React)
 | `ScrollView` | `scrollview` | GPUI `div.overflow_{x,y}_scroll` |
 | `Divider` | `divider` | `gpui_component::Divider` |
 | `Badge` | `badge` | Styled `div` with variant palette |
+| `Icon` | `icon` | `gpui_component::Icon` — lucide-based, 86 names via kebab-case (`name="chevron-left"`) |
 
 Adding a new primitive is a TS export (`createElement("foo", props)`) plus a Rust renderer (`match tag { "foo" => render_foo(...) }`).
 

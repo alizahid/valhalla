@@ -83,6 +83,8 @@ export type ButtonSize = "xs" | "sm" | "md" | "lg";
 
 export type ButtonProps = {
     label?: string;
+    /** Optional leading icon. Renders before the label. */
+    icon?: string;
     children?: ReactNode;
     variant?: ButtonVariant;
     size?: ButtonSize;
@@ -185,4 +187,114 @@ export type BadgeProps = CommonProps & {
 
 export function Badge(props: BadgeProps) {
     return createElement("badge", props);
+}
+
+// ─── Icon ────────────────────────────────────────────────────────────────
+// Backed by gpui-component's bundled lucide icon set. `name` is kebab-case
+// matching Lucide's slugs (e.g. "chevron-left", "arrow-up", "trash-2").
+// Unknown names render as an empty placeholder rather than crashing —
+// useful when you're typing the name out and TS autocomplete misses.
+
+export type IconName =
+    | "a-large-small"
+    | "arrow-down"
+    | "arrow-left"
+    | "arrow-right"
+    | "arrow-up"
+    | "asterisk"
+    | "bell"
+    | "book-open"
+    | "bot"
+    | "building-2"
+    | "calendar"
+    | "case-sensitive"
+    | "chart-pie"
+    | "check"
+    | "chevron-down"
+    | "chevron-left"
+    | "chevron-right"
+    | "chevrons-up-down"
+    | "chevron-up"
+    | "circle-check"
+    | "circle-user"
+    | "circle-x"
+    | "close"
+    | "x"
+    | "copy"
+    | "dash"
+    | "trash"
+    | "trash-2"
+    | "delete"
+    | "ellipsis"
+    | "ellipsis-vertical"
+    | "external-link"
+    | "eye"
+    | "eye-off"
+    | "file"
+    | "folder"
+    | "folder-closed"
+    | "folder-open"
+    | "frame"
+    | "gallery-vertical-end"
+    | "github"
+    | "globe"
+    | "heart"
+    | "heart-off"
+    | "inbox"
+    | "info"
+    | "inspector"
+    | "layout-dashboard"
+    | "loader"
+    | "loader-circle"
+    | "map"
+    | "maximize"
+    | "menu"
+    | "minimize"
+    | "minus"
+    | "moon"
+    | "palette"
+    | "panel-bottom"
+    | "panel-bottom-open"
+    | "panel-left"
+    | "panel-left-close"
+    | "panel-left-open"
+    | "panel-right"
+    | "panel-right-close"
+    | "panel-right-open"
+    | "plus"
+    | "redo"
+    | "redo-2"
+    | "replace"
+    | "resize-corner"
+    | "search"
+    | "settings"
+    | "settings-2"
+    | "sort-ascending"
+    | "sort-descending"
+    | "square-terminal"
+    | "star"
+    | "star-off"
+    | "sun"
+    | "thumbs-down"
+    | "thumbs-up"
+    | "triangle-alert"
+    | "undo"
+    | "undo-2"
+    | "user"
+    | "window-close"
+    | "window-maximize"
+    | "window-minimize"
+    | "window-restore";
+
+export type IconSize = "xs" | "sm" | "md" | "lg";
+
+export type IconProps = {
+    name: IconName;
+    size?: IconSize;
+    className?: string;
+    style?: CSSProperties;
+};
+
+export function Icon(props: IconProps) {
+    return createElement("icon", props);
 }

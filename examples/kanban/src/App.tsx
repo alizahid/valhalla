@@ -9,6 +9,7 @@ import {
     Button,
     Checkbox,
     Divider,
+    Icon,
     Pressable,
     ScrollView,
     Switch,
@@ -30,10 +31,10 @@ type Card = {
     urgent: boolean;
 };
 
-const COLUMNS: { id: ColumnId; label: string; tone: string }[] = [
-    { id: "backlog", label: "Backlog", tone: "bg-slate-700" },
-    { id: "doing", label: "In Progress", tone: "bg-blue-700" },
-    { id: "done", label: "Done", tone: "bg-green-700" },
+const COLUMNS: { id: ColumnId; label: string; tone: string; icon: string }[] = [
+    { id: "backlog", label: "Backlog", tone: "bg-slate-700", icon: "inbox" },
+    { id: "doing", label: "In Progress", tone: "bg-blue-700", icon: "loader-circle" },
+    { id: "done", label: "Done", tone: "bg-green-700", icon: "circle-check" },
 ];
 
 const SEED: Card[] = [
@@ -196,6 +197,7 @@ export default function App() {
                                 id={col.id}
                                 label={col.label}
                                 tone={col.tone}
+                                icon={col.icon}
                                 count={counts[col.id]}
                                 cards={cardsHere}
                                 selectedId={selectedId}
@@ -242,6 +244,7 @@ function Header(props: {
     return (
         <View className="flex flex-row items-center justify-between px-6 py-4 bg-slate-800">
             <View className="flex flex-row items-center gap-3">
+                <Icon name="layout-dashboard" size="lg" />
                 <Text className="text-2xl text-white">Valhalla</Text>
                 <Badge variant="info">{props.total} tasks</Badge>
             </View>
@@ -256,6 +259,7 @@ function Header(props: {
                     onValueChange={props.onSortChange}
                     label="Sort by priority"
                 />
+                <Button icon="settings" variant="ghost" size="sm" />
             </View>
         </View>
     );
@@ -267,6 +271,7 @@ function Column(props: {
     id: ColumnId;
     label: string;
     tone: string;
+    icon: string;
     count: number;
     cards: Card[];
     selectedId: number | null;
@@ -279,12 +284,13 @@ function Column(props: {
         <View className="flex flex-col gap-2 size-full bg-slate-800 rounded-lg p-3">
             <View className="flex flex-row items-center justify-between">
                 <View className="flex flex-row items-center gap-2">
-                    <View className={`w-2 h-2 rounded-full ${props.tone}`} />
+                    <Icon name={props.icon as any} size="sm" />
                     <Text className="text-white text-lg">{props.label}</Text>
                     <Badge>{props.count}</Badge>
                 </View>
                 <Button
-                    label="+ Add"
+                    icon="plus"
+                    label="Add"
                     variant="ghost"
                     size="sm"
                     onPress={() => props.onAdd(props.id)}
@@ -295,7 +301,8 @@ function Column(props: {
 
             <ScrollView className="flex flex-col gap-2 size-full">
                 {props.cards.length === 0 ? (
-                    <View className="p-6">
+                    <View className="flex flex-col items-center gap-2 p-6">
+                        <Icon name="inbox" size="md" />
                         <Text className="text-slate-500">No tasks here yet.</Text>
                     </View>
                 ) : (
@@ -337,7 +344,10 @@ function CardRow(props: {
             onPress={props.onSelect}
         >
             <View className="flex flex-row items-start justify-between gap-2">
-                <Text className="text-white text-base">{props.card.title}</Text>
+                <View className="flex flex-row items-center gap-2">
+                    {props.card.urgent && <Icon name="triangle-alert" size="sm" />}
+                    <Text className="text-white text-base">{props.card.title}</Text>
+                </View>
                 <Badge variant={priorityVariant(props.card.priority)}>
                     {props.card.priority}
                 </Badge>
@@ -352,20 +362,20 @@ function CardRow(props: {
             <View className="flex flex-row items-center justify-between">
                 <View className="flex flex-row gap-1">
                     <Button
-                        label="←"
+                        icon="chevron-left"
                         variant="ghost"
                         size="xs"
                         onPress={props.onMovePrev}
                     />
                     <Button
-                        label="→"
+                        icon="chevron-right"
                         variant="ghost"
                         size="xs"
                         onPress={props.onMoveNext}
                     />
                 </View>
                 <Button
-                    label="Delete"
+                    icon="trash-2"
                     variant="danger"
                     size="xs"
                     onPress={props.onDelete}
@@ -385,7 +395,8 @@ function DetailPanel(props: {
 }) {
     if (!props.card) {
         return (
-            <View className="flex flex-col items-center justify-center w-72 bg-slate-800 rounded-lg p-6">
+            <View className="flex flex-col items-center justify-center gap-2 w-72 bg-slate-800 rounded-lg p-6">
+                <Icon name="folder-open" size="lg" />
                 <Text className="text-slate-400">Select a card to see details.</Text>
             </View>
         );
@@ -395,9 +406,12 @@ function DetailPanel(props: {
     return (
         <View className="flex flex-col gap-3 w-72 bg-slate-800 rounded-lg p-4">
             <View className="flex flex-row items-center justify-between">
-                <Text className="text-white text-lg">Details</Text>
+                <View className="flex flex-row items-center gap-2">
+                    <Icon name="info" size="sm" />
+                    <Text className="text-white text-lg">Details</Text>
+                </View>
                 <Button
-                    label="×"
+                    icon="x"
                     variant="ghost"
                     size="xs"
                     onPress={props.onClose}
