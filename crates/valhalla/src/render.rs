@@ -22,38 +22,12 @@ pub fn render_root(
     // Apply font_family + default text_color from the theme too so any
     // text not styled by user classes is still legible (theme-correct).
     let theme = cx.theme();
-    let font_family = theme.font_family.clone();
-    let foreground = theme.foreground;
-    let font_size = theme.font_size;
-    log::info!(
-        "[valhalla] theme: font_family={:?} font_size={:?} foreground={:?}",
-        font_family,
-        font_size,
-        foreground
-    );
-    window.set_rem_size(font_size);
+    window.set_rem_size(theme.font_size);
 
     let mut container = div()
         .size_full()
-        .font_family(font_family)
-        .text_color(foreground);
-
-    // DEBUG: a literal text string outside the React tree. If this renders
-    // but the React-side text doesn't, the issue is in the render walk for
-    // <Text> children. If neither renders, the font / text system isn't set
-    // up correctly on this platform.
-    container = container.child(
-        div()
-            .absolute()
-            .top_0()
-            .left_0()
-            .px_2()
-            .py_1()
-            .bg(gpui::rgb(0xff0000))
-            .text_color(gpui::rgb(0xffffff))
-            .text_base()
-            .child("DEBUG: native text rendering"),
-    );
+        .font_family(theme.font_family.clone())
+        .text_color(theme.foreground);
 
     if let Some(id) = this.scene.root() {
         let element = render_node(&this.scene, id, window, cx);
