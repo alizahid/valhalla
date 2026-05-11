@@ -98,18 +98,33 @@ macro_rules! embed_bundle {
     };
 }
 
-/// Resolves `Bundle::Auto` based on the `VALHALLA_DEV` env var.
+/// Resolves `Bundle::Auto` against env vars and project conventions.
+///
+/// Order of resolution:
+/// 1. `VALHALLA_DEV=http://localhost:5173` → `Bundle::Vite`
+/// 2. `VALHALLA_BUNDLE=/abs/path/bundle.js` → `Bundle::File`
+/// 3. `<assets_dir>/../dist/bundle.js` exists → `Bundle::File`
+///    (the convention `bun run build` outputs to)
+/// 4. Otherwise the "no bundle configured" placeholder, which renders a
+///    debug message in the window so it's obvious what went wrong.
 pub(crate) fn resolve_auto_bundle() -> Bundle {
     if let Ok(url) = std::env::var("VALHALLA_DEV") {
-        Bundle::Vite { url }
-    } else if let Ok(path) = std::env::var("VALHALLA_BUNDLE") {
-        Bundle::File(PathBuf::from(path))
-    } else {
-        // Fall back to a tiny "no app loaded" bundle so the window still opens.
-        Bundle::Embedded(NO_APP_BUNDLE)
+        return Bundle::Vite { url };
     }
+    if let Ok(path) = std::env::var("VALHALLA_BUNDLE") {
+        return Bundle::File(PathBuf::from(path));
+    }
+    if let Some(assets_dir) = assets::get_assets_dir() {
+        if let Some(parent) = assets_dir.parent() {
+            let candidate = parent.join("dist").join("bundle.js");
+            if candidate.exists() {
+                return Bundle::File(candidate);
+            }
+        }
+    }
+    Bundle::Embedded(NO_APP_BUNDLE)
 }
 
 const NO_APP_BUNDLE: &str = r#"
-__host_log("[valhalla] no bundle configured. Set VALHALLA_DEV=http://localhost:5173 or VALHALLA_BUNDLE=/path/to/bundle.js, or call .bundle() explicitly.");
+__host_log("[valhalla] no bundle found. Either run `bun run build` (output goes to <assets_dir>/../dist/bundle.js), set VALHALLA_DEV=http://localhost:5173, set VALHALLA_BUNDLE=/path/to/bundle.js, or call .bundle() explicitly.");
 "#;

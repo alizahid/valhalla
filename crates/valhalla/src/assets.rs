@@ -20,6 +20,10 @@ pub fn set_assets_dir(dir: PathBuf) {
     let _ = ASSETS_DIR.set(dir);
 }
 
+pub fn get_assets_dir() -> Option<&'static PathBuf> {
+    ASSETS_DIR.get()
+}
+
 /// Resolve a `src` from JS into an absolute filesystem path.
 ///
 /// - Absolute paths pass through.
