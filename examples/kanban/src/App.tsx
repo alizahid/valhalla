@@ -195,38 +195,39 @@ export default function App() {
 
             <Divider />
 
-            <View className="flex flex-row gap-4 p-4 size-full">
-                {/* ── columns ─────────────────────────────────────── */}
-                <View className="flex flex-row gap-4 size-full">
-                    {COLUMNS.map((col) => {
-                        if (!showDone && col.id === "done") return null;
-                        const cardsHere = visible.filter((c) => c.column === col.id);
-                        return (
-                            <Column
-                                key={col.id}
-                                id={col.id}
-                                label={col.label}
-                                tone={col.tone}
-                                icon={col.icon}
-                                count={counts[col.id]}
-                                cards={cardsHere}
-                                selectedId={selectedId}
-                                onSelect={setSelectedId}
-                                onMove={(card, dir) => {
-                                    const target =
-                                        dir === "next"
-                                            ? nextColumn(card.column)
-                                            : prevColumn(card.column);
-                                    if (target) update(card.id, { column: target });
-                                }}
-                                onDelete={remove}
-                                onAdd={addCard}
-                            />
-                        );
-                    })}
-                </View>
+            {/*
+              * Horizontal scroller for the columns + detail panel. Each child
+              * has a fixed minimum width so they stay readable; if the window
+              * is narrower than the sum of the columns, this scrolls.
+              */}
+            <ScrollView horizontal className="flex flex-row gap-4 p-4 size-full">
+                {COLUMNS.map((col) => {
+                    if (!showDone && col.id === "done") return null;
+                    const cardsHere = visible.filter((c) => c.column === col.id);
+                    return (
+                        <Column
+                            key={col.id}
+                            id={col.id}
+                            label={col.label}
+                            tone={col.tone}
+                            icon={col.icon}
+                            count={counts[col.id]}
+                            cards={cardsHere}
+                            selectedId={selectedId}
+                            onSelect={setSelectedId}
+                            onMove={(card, dir) => {
+                                const target =
+                                    dir === "next"
+                                        ? nextColumn(card.column)
+                                        : prevColumn(card.column);
+                                if (target) update(card.id, { column: target });
+                            }}
+                            onDelete={remove}
+                            onAdd={addCard}
+                        />
+                    );
+                })}
 
-                {/* ── detail panel ────────────────────────────────── */}
                 <DetailPanel
                     card={selected}
                     onChangePriority={(p) =>
@@ -237,7 +238,7 @@ export default function App() {
                     }
                     onClose={() => setSelectedId(null)}
                 />
-            </View>
+            </ScrollView>
         </View>
     );
 }
@@ -291,7 +292,7 @@ function Column(props: {
     onAdd: (column: ColumnId) => void;
 }) {
     return (
-        <View className="flex flex-col gap-2 size-full bg-slate-800 rounded-lg p-3">
+        <View className="flex flex-col gap-2 w-80 h-full bg-slate-800 rounded-lg p-3">
             <View className="flex flex-row items-center justify-between">
                 <View className="flex flex-row items-center gap-2">
                     <Icon name={props.icon as any} size="sm" />
