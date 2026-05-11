@@ -29,3 +29,10 @@ env_logger      = "0.11"
 lto = "thin"
 codegen-units = 1
 strip = true
+
+# The published gpui 0.2.2 was built against an older Metal SDK; its shaders
+# fail to compile on current Xcode (zed#46486). Override both our direct dep
+# and gpui-component's transitive dep with the upstream main branch, which
+# longbridge/gpui-component tracks too.
+[patch.crates-io]
+gpui = { git = "https://github.com/zed-industries/zed" }
