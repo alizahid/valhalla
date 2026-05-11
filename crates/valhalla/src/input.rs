@@ -4,27 +4,21 @@
 //! div, the current `value` attr is shown inside it, and `onClick` works
 //! the way it does on any other div. Real text editing (cursor, IME, focus,
 //! `onChange` per keystroke) is the next milestone — it lands as a
-//! `gpui-component::TextField` integration in `render_input_textfield`
-//! (below, behind a TODO) once we pin the gpui / gpui-component versions
-//! against each other.
-//!
-//! Why a stub: the V1 demo flow validates the JS↔Rust render pipeline. Text
-//! editing brings in focus / cursor / IME concerns that are best done after
-//! we've confirmed the rest of the loop renders pixels correctly.
+//! gpui-component `Input` integration once we wire focus management.
 
-use std::sync::Arc;
-
-use gpui::{div, prelude::*, AnyElement, MouseButton, SharedString};
+use gpui::{div, prelude::*, AnyElement, Context, MouseButton, SharedString};
 
 use crate::events;
-use crate::runtime::JsHost;
+use crate::runtime::RootView;
 use crate::scene::{ElementProps, NodeId};
 use crate::style;
 use crate::tailwind;
 
-pub fn render_input(id: NodeId, props: &ElementProps, js: &Arc<JsHost>) -> AnyElement {
-    let _ = id;
-
+pub fn render_input(
+    _id: NodeId,
+    props: &ElementProps,
+    cx: &mut Context<RootView>,
+) -> AnyElement {
     let value = props
         .attrs
         .get("value")
@@ -50,10 +44,15 @@ pub fn render_input(id: NodeId, props: &ElementProps, js: &Arc<JsHost>) -> AnyEl
     el = el.child(display);
 
     if let Some(&hid) = props.handlers.get("onClick") {
-        let js = js.clone();
-        el = el.on_mouse_down(MouseButton::Left, move |_event, _window, _cx| {
-            let _ = events::dispatch(&js, hid, serde_json::json!({}));
-        });
+        el = el.on_mouse_down(
+            MouseButton::Left,
+            cx.listener(move |this, _event, _window, cx| {
+                if let Err(err) = events::dispatch(&this.js, hid, serde_json::json!({})) {
+                    log::warn!("[valhalla] dispatch error: {}", err);
+                }
+                this.drain(cx);
+            }),
+        );
     }
 
     el.into_any_element()

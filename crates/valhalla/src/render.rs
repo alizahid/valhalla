@@ -5,18 +5,35 @@
 //! renderer so future primitives can be added in JS first without breaking
 //! the host.
 
-use std::sync::Arc;
+use gpui::{div, prelude::*, AnyElement, Context, SharedString, Window};
+use gpui_component::ActiveTheme;
 
-use gpui::{div, prelude::*, AnyElement, App, SharedString, Window};
-
-use crate::runtime::{JsHost, RootView};
+use crate::runtime::RootView;
 use crate::scene::{ElementProps, Node, NodeId, SceneTree};
 use crate::widgets;
 
-pub fn render_root(this: &mut RootView, window: &mut Window, cx: &mut App) -> AnyElement {
-    let mut container = div().size_full();
+pub fn render_root(
+    this: &mut RootView,
+    window: &mut Window,
+    cx: &mut Context<RootView>,
+) -> AnyElement {
+    // gpui's text rendering uses `rem` units; rems multiply against
+    // window.rem_size(). gpui-component's theme is the source of truth.
+    // Apply font_family + default text_color from the theme too so any
+    // text not styled by user classes is still legible (theme-correct).
+    let theme = cx.theme();
+    let font_family = theme.font_family.clone();
+    let foreground = theme.foreground;
+    let font_size = theme.font_size;
+    window.set_rem_size(font_size);
+
+    let mut container = div()
+        .size_full()
+        .font_family(font_family)
+        .text_color(foreground);
+
     if let Some(id) = this.scene.root() {
-        let element = render_node(&this.scene, id, &this.js, window, cx);
+        let element = render_node(&this.scene, id, window, cx);
         container = container.child(element);
     } else {
         container = container.child(SharedString::from(
@@ -26,12 +43,11 @@ pub fn render_root(this: &mut RootView, window: &mut Window, cx: &mut App) -> An
     container.into_any_element()
 }
 
-fn render_node(
+pub(crate) fn render_node(
     scene: &SceneTree,
     id: NodeId,
-    js: &Arc<JsHost>,
     window: &mut Window,
-    cx: &mut App,
+    cx: &mut Context<RootView>,
 ) -> AnyElement {
     match scene.get(id) {
         Some(Node::Text { value }) => SharedString::from(value.clone()).into_any_element(),
@@ -40,7 +56,7 @@ fn render_node(
             tag,
             props,
             children,
-        }) => render_element(scene, id, tag, props, children, js, window, cx),
+        }) => render_element(scene, id, tag, props, children, window, cx),
 
         None => div().into_any_element(),
     }
@@ -52,39 +68,38 @@ fn render_element(
     tag: &str,
     props: &ElementProps,
     children: &[NodeId],
-    js: &Arc<JsHost>,
     window: &mut Window,
-    cx: &mut App,
+    cx: &mut Context<RootView>,
 ) -> AnyElement {
     // Resolve children up-front so each widget renderer receives a Vec it
     // can drop into `.children(...)`. This pulls each child through the
     // walk recursively.
     let rendered_children: Vec<AnyElement> = children
         .iter()
-        .map(|&id| render_node(scene, id, js, window, cx))
+        .map(|&id| render_node(scene, id, window, cx))
         .collect();
 
     match tag {
         // Layout / structural primitives.
-        "view" | "div" => widgets::render_view(props, rendered_children, js),
-        "pressable" => widgets::render_pressable(node_id, props, rendered_children, js),
+        "view" | "div" => widgets::render_view(props, rendered_children, cx),
+        "pressable" => widgets::render_pressable(node_id, props, rendered_children, cx),
         "text" | "span" => widgets::render_text(props, rendered_children),
         "scrollview" => widgets::render_scrollview(node_id, props, rendered_children),
 
         // gpui-component widgets.
-        "button" => widgets::render_button(node_id, props, js, window, cx),
-        "checkbox" => widgets::render_checkbox(node_id, props, js),
-        "switch" => widgets::render_switch(node_id, props, js),
+        "button" => widgets::render_button(node_id, props, cx),
+        "checkbox" => widgets::render_checkbox(node_id, props, cx),
+        "switch" => widgets::render_switch(node_id, props, cx),
         "divider" => widgets::render_divider(props),
         "badge" => widgets::render_badge(props, rendered_children),
         "svg" => widgets::render_svg(props),
         "image" => widgets::render_image(props),
 
         // Text input — still stubbed (renders the value as static text).
-        "textinput" | "input" => crate::input::render_input(node_id, props, js),
+        "textinput" | "input" => crate::input::render_input(node_id, props, cx),
 
         // Unknown tag: render as a view so a typo or future primitive doesn't
         // make the whole window go blank.
-        _ => widgets::render_view(props, rendered_children, js),
+        _ => widgets::render_view(props, rendered_children, cx),
     }
 }

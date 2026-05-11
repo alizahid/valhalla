@@ -5,12 +5,17 @@
 //! `tag` string emitted by JS. Most widgets are gpui-component primitives
 //! wrapped to accept Tailwind classes / `style` props and route their
 //! events back into JS via the handler-id table.
-
-use std::sync::Arc;
+//!
+//! Every event handler goes through `cx.listener(...)`, which captures the
+//! root entity weakly. Inside the listener we (1) call into JS to fire the
+//! React handler — which runs setState synchronously and pushes new ops to
+//! `bridge.inbox` via `__host_commit` — and then (2) call `this.drain(cx)`
+//! to apply those ops and trigger `cx.notify()` so GPUI re-renders. Without
+//! the drain, clicks silently disappear after the first render.
 
 use gpui::{
-    div, img, prelude::*, px, svg, AnyElement, App, ElementId, MouseButton, ObjectFit,
-    SharedString, Window,
+    div, img, prelude::*, px, AnyElement, ClickEvent, Context, ElementId, MouseButton, ObjectFit,
+    SharedString,
 };
 use gpui_component::{
     button::{Button as GpuiButton, ButtonVariants},
@@ -22,7 +27,7 @@ use gpui_component::{
 
 use crate::assets;
 use crate::events;
-use crate::runtime::JsHost;
+use crate::runtime::RootView;
 use crate::scene::{ElementProps, NodeId};
 use crate::style;
 use crate::tailwind;
@@ -33,10 +38,18 @@ pub(crate) fn element_id(node_id: NodeId, prefix: &str) -> ElementId {
     ElementId::Name(format!("{}-{}", prefix, node_id).into())
 }
 
-fn dispatch_async(js: &Arc<JsHost>, hid: u32, payload: serde_json::Value) {
-    if let Err(err) = events::dispatch(js, hid, payload) {
+/// Fire a JS event handler by id, then drain any ops the handler pushed.
+/// The drain calls `cx.notify()` if anything came in, scheduling a repaint.
+fn dispatch_and_drain(
+    this: &mut RootView,
+    hid: u32,
+    payload: serde_json::Value,
+    cx: &mut Context<RootView>,
+) {
+    if let Err(err) = events::dispatch(&this.js, hid, payload) {
         log::warn!("[valhalla] dispatch error: {}", err);
     }
+    this.drain(cx);
 }
 
 fn attr_bool(props: &ElementProps, key: &str) -> bool {
@@ -52,7 +65,7 @@ fn attr_str<'a>(props: &'a ElementProps, key: &str) -> Option<&'a str> {
 pub fn render_view(
     props: &ElementProps,
     children: Vec<AnyElement>,
-    js: &Arc<JsHost>,
+    cx: &mut Context<RootView>,
 ) -> AnyElement {
     let mut el = div();
     for op in tailwind::parse(&props.classes) {
@@ -61,10 +74,12 @@ pub fn render_view(
     el = style::apply(el, &props.style);
 
     if let Some(&hid) = props.handlers.get("onClick") {
-        let js = js.clone();
-        el = el.on_mouse_down(MouseButton::Left, move |_event, _window, _cx| {
-            dispatch_async(&js, hid, serde_json::json!({}));
-        });
+        el = el.on_mouse_down(
+            MouseButton::Left,
+            cx.listener(move |this, _event, _window, cx| {
+                dispatch_and_drain(this, hid, serde_json::json!({}), cx);
+            }),
+        );
     }
 
     el.children(children).into_any_element()
@@ -74,7 +89,7 @@ pub fn render_pressable(
     node_id: NodeId,
     props: &ElementProps,
     children: Vec<AnyElement>,
-    js: &Arc<JsHost>,
+    cx: &mut Context<RootView>,
 ) -> AnyElement {
     let mut el = div();
     for op in tailwind::parse(&props.classes) {
@@ -89,18 +104,17 @@ pub fn render_pressable(
             .get("onPress")
             .or_else(|| props.handlers.get("onClick"))
         {
-            let js = js.clone();
-            el = el.on_mouse_down(MouseButton::Left, move |event, _window, _cx| {
-                let pos = event.position;
-                dispatch_async(
-                    &js,
-                    hid,
-                    serde_json::json!({
+            el = el.on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, event: &gpui::MouseDownEvent, _window, cx| {
+                    let pos = event.position;
+                    let payload = serde_json::json!({
                         "x": f32::from(pos.x),
                         "y": f32::from(pos.y),
-                    }),
-                );
-            });
+                    });
+                    dispatch_and_drain(this, hid, payload, cx);
+                }),
+            );
         }
     }
 
@@ -109,10 +123,7 @@ pub fn render_pressable(
 
 // ─── text ────────────────────────────────────────────────────────────────
 
-pub fn render_text(
-    props: &ElementProps,
-    children: Vec<AnyElement>,
-) -> AnyElement {
+pub fn render_text(props: &ElementProps, children: Vec<AnyElement>) -> AnyElement {
     // Text is rendered as a flex-row container so multiple inline children
     // (interpolated strings, formatted spans) lay out correctly. The classes
     // / style on `<Text>` apply to the whole line.
@@ -164,10 +175,7 @@ pub fn render_divider(props: &ElementProps) -> AnyElement {
 
 // ─── badge ───────────────────────────────────────────────────────────────
 
-pub fn render_badge(
-    props: &ElementProps,
-    children: Vec<AnyElement>,
-) -> AnyElement {
+pub fn render_badge(props: &ElementProps, children: Vec<AnyElement>) -> AnyElement {
     let variant = attr_str(props, "variant").unwrap_or("default");
     let (bg, fg) = match variant {
         "success" => (gpui::rgb(0xDCFCE7), gpui::rgb(0x166534)),
@@ -198,9 +206,7 @@ pub fn render_badge(
 pub fn render_button(
     node_id: NodeId,
     props: &ElementProps,
-    js: &Arc<JsHost>,
-    _window: &mut Window,
-    _cx: &mut App,
+    cx: &mut Context<RootView>,
 ) -> AnyElement {
     let label = attr_str(props, "label").map(|s| s.to_string());
     let icon_src = attr_str(props, "icon");
@@ -213,8 +219,6 @@ pub fn render_button(
         btn = btn.label(SharedString::from(label));
     }
     if let Some(src) = icon_src {
-        // Pass the resolved filesystem path through gpui-component's
-        // Icon::path() — the same path the standalone <Svg> primitive uses.
         let path = assets::resolve(src);
         let path_str = path.to_string_lossy().into_owned();
         btn = btn.icon(GpuiIcon::default().path(SharedString::from(path_str)));
@@ -242,10 +246,9 @@ pub fn render_button(
         .get("onPress")
         .or_else(|| props.handlers.get("onClick"))
     {
-        let js = js.clone();
-        btn = btn.on_click(move |_event, _window, _cx| {
-            dispatch_async(&js, hid, serde_json::json!({}));
-        });
+        btn = btn.on_click(cx.listener(move |this, _ev: &ClickEvent, _window, cx| {
+            dispatch_and_drain(this, hid, serde_json::json!({}), cx);
+        }));
     }
 
     btn.into_any_element()
@@ -263,22 +266,23 @@ fn size_to_px(s: Option<&str>) -> gpui::Pixels {
     }
 }
 
+/// Standalone `<Svg>`. Rendered via gpui-component's `Icon` so it inherits
+/// the cascaded text color (gpui's plain `svg()` defaults to black, which is
+/// invisible on dark backgrounds — the most common cause of "icons disappear"
+/// in earlier versions).
 pub fn render_svg(props: &ElementProps) -> AnyElement {
     let Some(src) = attr_str(props, "src") else {
         return div().into_any_element();
     };
     let path = assets::resolve(src);
     let path_str = path.to_string_lossy().into_owned();
-
     let s = size_to_px(attr_str(props, "size"));
-    let tint = attr_str(props, "tint")
-        .and_then(crate::style::parse_color_public);
 
-    let mut el = svg().path(SharedString::from(path_str)).w(s).h(s);
-    if let Some(c) = tint {
-        el = el.text_color(c);
+    let mut icon = GpuiIcon::default().path(SharedString::from(path_str)).size(s);
+    if let Some(tint) = attr_str(props, "tint").and_then(style::parse_color_public) {
+        icon = icon.text_color(tint);
     }
-    el.into_any_element()
+    icon.into_any_element()
 }
 
 // ─── image ───────────────────────────────────────────────────────────────
@@ -313,7 +317,7 @@ pub fn render_image(props: &ElementProps) -> AnyElement {
 pub fn render_checkbox(
     node_id: NodeId,
     props: &ElementProps,
-    js: &Arc<JsHost>,
+    cx: &mut Context<RootView>,
 ) -> AnyElement {
     let checked = attr_bool(props, "checked");
     let disabled = attr_bool(props, "disabled");
@@ -327,10 +331,9 @@ pub fn render_checkbox(
         cb = cb.disabled(true);
     }
     if let Some(&hid) = props.handlers.get("onValueChange") {
-        let js = js.clone();
-        cb = cb.on_click(move |new_value: &bool, _window, _cx| {
-            dispatch_async(&js, hid, serde_json::json!({ "value": *new_value }));
-        });
+        cb = cb.on_click(cx.listener(move |this, new_value: &bool, _window, cx| {
+            dispatch_and_drain(this, hid, serde_json::json!({ "value": *new_value }), cx);
+        }));
     }
     cb.into_any_element()
 }
@@ -340,7 +343,7 @@ pub fn render_checkbox(
 pub fn render_switch(
     node_id: NodeId,
     props: &ElementProps,
-    js: &Arc<JsHost>,
+    cx: &mut Context<RootView>,
 ) -> AnyElement {
     let checked = attr_bool(props, "checked");
     let disabled = attr_bool(props, "disabled");
@@ -354,10 +357,9 @@ pub fn render_switch(
         sw = sw.disabled(true);
     }
     if let Some(&hid) = props.handlers.get("onValueChange") {
-        let js = js.clone();
-        sw = sw.on_click(move |new_value: &bool, _window, _cx| {
-            dispatch_async(&js, hid, serde_json::json!({ "value": *new_value }));
-        });
+        sw = sw.on_click(cx.listener(move |this, new_value: &bool, _window, cx| {
+            dispatch_and_drain(this, hid, serde_json::json!({ "value": *new_value }), cx);
+        }));
     }
     sw.into_any_element()
 }
