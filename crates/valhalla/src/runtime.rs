@@ -4,12 +4,13 @@
 //! the two together via host functions (JS → Rust) and the dispatch path
 //! (Rust → JS).
 
+use std::borrow::Cow;
 use std::sync::Arc;
 
-use anyhow::Context as _;
+use anyhow::{Context as _, Result};
 use gpui::{
-    prelude::*, px, size, App as GpuiApp, AppContext, Bounds, Context, Window, WindowBounds,
-    WindowOptions,
+    prelude::*, px, size, App as GpuiApp, AppContext, AssetSource, Bounds, Context, SharedString,
+    Window, WindowBounds, WindowOptions,
 };
 use parking_lot::Mutex;
 use rquickjs::{
@@ -98,7 +99,12 @@ pub(crate) fn launch(
 
     // `gpui_platform::application()` is the modern constructor — it picks
     // the right `Platform` impl per OS so we don't need cfg gating.
-    gpui_platform::application().run(move |cx: &mut GpuiApp| {
+    // `with_assets` registers a filesystem loader so gpui's svg() / img() /
+    // text rendering can pull SVG paths from disk and gpui-component can
+    // load any bundled font / theme assets it expects.
+    gpui_platform::application()
+        .with_assets(FsAssets)
+        .run(move |cx: &mut GpuiApp| {
         // Set up gpui-component's themes / fonts before any widget is built.
         gpui_component::init(cx);
 
@@ -205,6 +211,40 @@ fn eval_source(js: &Arc<JsHost>, src: &str) -> anyhow::Result<()> {
             Err(other) => anyhow::bail!("JS error: {:?}", other),
         }
     })
+}
+
+/// Asset source backed by the filesystem. Both gpui's `svg()` element and
+/// any internal asset lookups in gpui-component go through this when they
+/// need to load bytes for a `path`. Paths flow through unchanged — our
+/// `<Svg src="...">` already resolves to an absolute path via `assets::`,
+/// so `std::fs::read` just works. Absent assets return `Ok(None)` rather
+/// than erroring, matching GPUI's expectation that missing assets be
+/// soft-failures.
+struct FsAssets;
+
+impl AssetSource for FsAssets {
+    fn load(&self, path: &str) -> Result<Option<Cow<'static, [u8]>>> {
+        match std::fs::read(path) {
+            Ok(bytes) => Ok(Some(Cow::Owned(bytes))),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(err) => Err(err.into()),
+        }
+    }
+
+    fn list(&self, path: &str) -> Result<Vec<SharedString>> {
+        let read_dir = match std::fs::read_dir(path) {
+            Ok(it) => it,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
+            Err(err) => return Err(err.into()),
+        };
+        Ok(read_dir
+            .filter_map(|entry| {
+                entry
+                    .ok()
+                    .map(|e| SharedString::from(e.path().to_string_lossy().into_owned()))
+            })
+            .collect())
+    }
 }
 
 /// Browser-ish globals the React bundle expects: setTimeout, queueMicrotask,
