@@ -5,7 +5,7 @@
     "type": "module",
     "scripts": {
         "build": "vite build",
-        "dev": "vite"
+        "watch": "vite build --watch"
     },
     "dependencies": {
         "@valhalla/runtime": "workspace:*",

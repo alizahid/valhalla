@@ -162,20 +162,32 @@ These are scoped V1 features and the design is laid out; the foundation under th
 ```sh
 git clone https://github.com/alizahid/valhalla
 cd valhalla
-bun install        # installs all JS workspaces (runtime, vite-plugin, kanban)
+bun install                       # installs all JS workspaces
+cargo install cargo-watch         # only needed for `bun run dev`
 ```
 
 ### Run the Kanban demo
 
-The demo is split in two: a JS bundle (built by Vite) and a Rust binary (built by Cargo). The bundle must exist before the binary runs.
+The whole loop in one command, from the repo root:
 
 ```sh
-# 1. Build the JS bundle. Produces examples/kanban/dist/bundle.js
-cd examples/kanban
+bun run dev
+```
+
+That starts two parallel watchers:
+
+- **vite** — `vite build --watch` rebuilds `examples/kanban/dist/bundle.js` on every TSX save (cyan output)
+- **cargo** — `cargo watch -x "run -p kanban"` restarts the binary whenever the bundle changes (yellow output)
+
+End-to-end iteration is sub-second from save to repaint. State is lost on each rebuild — true Fast Refresh is on the [roadmap](.claude/plans/i-wanna-see-if-fluffy-beacon.md), see the "what's stubbed" section below.
+
+If you'd rather drive the two pieces yourself:
+
+```sh
+# 1. Build the JS bundle once. Produces examples/kanban/dist/bundle.js
 bun run build
 
 # 2. Run the native binary. Opens a GPUI window with the Kanban UI.
-cd ../..
 cargo run -p kanban
 ```
 
@@ -199,17 +211,6 @@ Expect ~570 ops on initial mount and a follow-up batch after the synthetic dispa
   #2  <text> classes=["text-3xl", "text-white"]
     #3  text "Count: 0"
 ```
-
-### Iterating on the demo
-
-The bundle is what Rust reads — so edits to JS/TSX need a rebuild:
-
-```sh
-cd examples/kanban
-bun run build         # produces dist/bundle.js
-```
-
-Then restart the binary. Fast Refresh / HMR is on the [roadmap](.claude/plans/i-wanna-see-if-fluffy-beacon.md) but not wired up yet — `bun run dev` will start a Vite dev server, but the Rust loader doesn't yet pull modules from it (currently logs HMR frames only). For now: `bun run build && cargo run -p kanban` after each change.
 
 ### Running tests
 
