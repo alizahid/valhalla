@@ -10,7 +10,7 @@
         "build:runtime": "bun --filter @valhalla/runtime build",
         "build:plugin": "bun --filter @valhalla/vite build",
         "build:packages": "bun run build:runtime && bun run build:plugin",
-        "dev": "bun --filter kanban build && concurrently --kill-others-on-fail --names 'vite,cargo' --prefix-colors 'cyan,yellow' 'bun --filter kanban watch' 'cargo watch -w examples/kanban/dist/bundle.js -d 0.3 -x \"run -p kanban\"'"
+        "dev": "bun --filter kanban build && concurrently --kill-others-on-fail --names 'vite,cargo' --prefix-colors 'cyan,yellow' 'bun --filter kanban watch' 'cargo watch -w examples/kanban/dist -d 0.5 -x \"run -p kanban\"'"
     },
     "devDependencies": {
         "concurrently": "^9.1.0",
