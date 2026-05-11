@@ -143,7 +143,93 @@ Per the [plan](.claude/plans/i-wanna-see-if-fluffy-beacon.md), V1 promises Fast 
 
 These are scoped V1 features and the design is laid out; the foundation under them (the React→Rust pipeline) is real and tested.
 
-## Toolchain
+## Getting started
+
+### Prerequisites
+
+- **Rust** 1.94+ (`rustup` recommended)
+- **Bun** 1.3+ ([install](https://bun.sh))
+- On Linux: GPUI links against xkbcommon. On Debian/Ubuntu:
+
+  ```sh
+  sudo apt-get install -y libxkbcommon-dev libxkbcommon-x11-dev
+  ```
+
+  macOS and Windows have no extra system deps — `cargo build` picks everything up.
+
+### One-time setup
+
+```sh
+git clone https://github.com/alizahid/valhalla
+cd valhalla
+bun install        # installs all JS workspaces (runtime, vite-plugin, kanban)
+```
+
+### Run the Kanban demo
+
+The demo is split in two: a JS bundle (built by Vite) and a Rust binary (built by Cargo). The bundle must exist before the binary runs.
+
+```sh
+# 1. Build the JS bundle. Produces examples/kanban/dist/bundle.js
+cd examples/kanban
+bun run build
+
+# 2. Run the native binary. Opens a GPUI window with the Kanban UI.
+cd ../..
+cargo run -p kanban
+```
+
+The binary points at `examples/kanban/dist/bundle.js` automatically via `Bundle::Auto` + `assets_dir(...)` — no env vars needed.
+
+> **Headless / SSH note.** GPUI needs a graphical display. Over SSH you'll need X11 forwarding (`ssh -X`) or a virtual framebuffer (`xvfb-run`). The headless smoke test below works anywhere.
+
+### Headless smoke test (no display required)
+
+Useful in CI and for quickly verifying the JS↔Rust pipeline without opening a window. Loads the bundle, runs React, captures every mutation op, prints the resulting scene tree, then synthetically dispatches an event and prints the diff.
+
+```sh
+cd examples/kanban && bun run build && cd ../..
+cargo run -p valhalla --bin valhalla-headless -- examples/kanban/dist/bundle.js
+```
+
+Expect ~570 ops on initial mount and a follow-up batch after the synthetic dispatch. The output is a tagged tree like:
+
+```
+#1  <view> classes=["flex", "flex-col", ...] handlers={"onClick": 3}
+  #2  <text> classes=["text-3xl", "text-white"]
+    #3  text "Count: 0"
+```
+
+### Iterating on the demo
+
+The bundle is what Rust reads — so edits to JS/TSX need a rebuild:
+
+```sh
+cd examples/kanban
+bun run build         # produces dist/bundle.js
+```
+
+Then restart the binary. Fast Refresh / HMR is on the [roadmap](.claude/plans/i-wanna-see-if-fluffy-beacon.md) but not wired up yet — `bun run dev` will start a Vite dev server, but the Rust loader doesn't yet pull modules from it (currently logs HMR frames only). For now: `bun run build && cargo run -p kanban` after each change.
+
+### Running tests
+
+```sh
+cargo test --workspace        # scene-tree + style/colour parser unit tests
+```
+
+There's no JS-side test suite yet — the headless binary plays the role of an integration test.
+
+### Trying your own app
+
+The `examples/kanban` directory is the template. To start something new:
+
+1. Copy `examples/kanban` to `examples/myapp` (or any path).
+2. Update `Cargo.toml`'s package name and `examples/myapp/Cargo.toml` in the workspace `members` list (root `Cargo.toml`).
+3. Update `package.json`'s `name`.
+4. Replace `src/App.tsx` with your UI.
+5. `bun install && bun run build && cargo run -p myapp`.
+
+## Toolchain reference
 
 - Rust 1.94+
 - Bun 1.3+
