@@ -8,8 +8,8 @@ use std::sync::Arc;
 
 use anyhow::Context as _;
 use gpui::{
-    prelude::*, px, size, App as GpuiApp, AppContext, Application, Bounds, Context, Window,
-    WindowBounds, WindowOptions,
+    prelude::*, px, size, App as GpuiApp, AppContext, Bounds, Context, Window, WindowBounds,
+    WindowOptions,
 };
 use parking_lot::Mutex;
 use rquickjs::{Context as JsContext, Function, Runtime as JsRuntime};
@@ -93,7 +93,9 @@ pub(crate) fn launch(
     install_host_functions(&js, &bridge)?;
     eval_bundle(&js, resolved, &bridge)?;
 
-    Application::new().run(move |cx: &mut GpuiApp| {
+    // `gpui_platform::application()` is the modern constructor — it picks
+    // the right `Platform` impl per OS so we don't need cfg gating.
+    gpui_platform::application().run(move |cx: &mut GpuiApp| {
         // Set up gpui-component's themes / fonts before any widget is built.
         gpui_component::init(cx);
 

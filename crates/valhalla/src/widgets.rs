@@ -15,7 +15,7 @@ use gpui::{
 use gpui_component::{
     button::{Button as GpuiButton, ButtonVariants},
     checkbox::Checkbox as GpuiCheckbox,
-    divider::Divider as GpuiDivider,
+    separator::Separator as GpuiSeparator,
     switch::Switch as GpuiSwitch,
     Disableable, Icon as GpuiIcon, Sizable, Size,
 };
@@ -151,15 +151,15 @@ pub fn render_scrollview(
 pub fn render_divider(props: &ElementProps) -> AnyElement {
     let vertical = attr_bool(props, "vertical");
     let label = attr_str(props, "label");
-    let mut div = if vertical {
-        GpuiDivider::vertical()
+    let mut sep = if vertical {
+        GpuiSeparator::vertical()
     } else {
-        GpuiDivider::horizontal()
+        GpuiSeparator::horizontal()
     };
     if let Some(label) = label {
-        div = div.label(SharedString::from(label.to_string()));
+        sep = sep.label(SharedString::from(label.to_string()));
     }
-    div.into_any_element()
+    sep.into_any_element()
 }
 
 // ─── badge ───────────────────────────────────────────────────────────────

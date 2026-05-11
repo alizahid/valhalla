@@ -36,3 +36,6 @@ strip = true
 # longbridge/gpui-component tracks too.
 [patch.crates-io]
 gpui = { git = "https://github.com/zed-industries/zed" }
+# gpui-component 0.5.1 on crates.io tracks an older gpui API; their main
+# branch keeps pace with Zed's main, which our gpui patch above tracks.
+gpui-component = { git = "https://github.com/longbridge/gpui-component" }
