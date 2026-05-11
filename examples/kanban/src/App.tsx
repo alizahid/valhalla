@@ -9,13 +9,23 @@ import {
     Button,
     Checkbox,
     Divider,
-    Icon,
     Pressable,
     ScrollView,
+    Svg,
+    type SvgSize,
     Switch,
     Text,
     View,
 } from "@valhalla/runtime";
+
+// Userland icon convention. The framework ships <Svg src="..."> as the
+// primitive; choosing an icon set (lucide, heroicons, your own bundle)
+// belongs here, not in core. Paths resolve against the assets_dir
+// configured in src/main.rs — for this demo, examples/kanban/assets/.
+const iconPath = (name: string) => `icons/${name}.svg`;
+function Icon({ name, size, tint }: { name: string; size?: SvgSize; tint?: string }) {
+    return <Svg src={iconPath(name)} size={size} tint={tint} />;
+}
 
 // ─── data model ──────────────────────────────────────────────────────────
 
@@ -259,7 +269,7 @@ function Header(props: {
                     onValueChange={props.onSortChange}
                     label="Sort by priority"
                 />
-                <Button icon="settings" variant="ghost" size="sm" />
+                <Button icon={iconPath("settings")} variant="ghost" size="sm" />
             </View>
         </View>
     );
@@ -289,7 +299,7 @@ function Column(props: {
                     <Badge>{props.count}</Badge>
                 </View>
                 <Button
-                    icon="plus"
+                    icon={iconPath("plus")}
                     label="Add"
                     variant="ghost"
                     size="sm"
@@ -362,20 +372,20 @@ function CardRow(props: {
             <View className="flex flex-row items-center justify-between">
                 <View className="flex flex-row gap-1">
                     <Button
-                        icon="chevron-left"
+                        icon={iconPath("chevron-left")}
                         variant="ghost"
                         size="xs"
                         onPress={props.onMovePrev}
                     />
                     <Button
-                        icon="chevron-right"
+                        icon={iconPath("chevron-right")}
                         variant="ghost"
                         size="xs"
                         onPress={props.onMoveNext}
                     />
                 </View>
                 <Button
-                    icon="trash-2"
+                    icon={iconPath("trash-2")}
                     variant="danger"
                     size="xs"
                     onPress={props.onDelete}
@@ -411,7 +421,7 @@ function DetailPanel(props: {
                     <Text className="text-white text-lg">Details</Text>
                 </View>
                 <Button
-                    icon="x"
+                    icon={iconPath("x")}
                     variant="ghost"
                     size="xs"
                     onPress={props.onClose}

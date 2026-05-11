@@ -124,6 +124,10 @@ fn with_f32(d: Div, value: &JsonValue, f: impl FnOnce(Div, f32) -> Div) -> Div {
 
 /// Parse a CSS-ish color into `Hsla`. Supports `#rrggbb`, `#rrggbbaa`,
 /// `rgb(r,g,b)`, `rgba(r,g,b,a)`, and a few named colors.
+pub(crate) fn parse_color_public(s: &str) -> Option<Hsla> {
+    parse_color(s)
+}
+
 fn parse_color(s: &str) -> Option<Hsla> {
     let s = s.trim();
     if let Some(named) = named_color(s) {

@@ -9,7 +9,8 @@
 use std::sync::Arc;
 
 use gpui::{
-    div, prelude::*, px, AnyElement, App, ElementId, MouseButton, SharedString, Window,
+    div, img, prelude::*, px, svg, AnyElement, App, ElementId, MouseButton, ObjectFit,
+    SharedString, Window,
 };
 use gpui_component::{
     button::{Button as GpuiButton, ButtonVariants},
@@ -19,8 +20,8 @@ use gpui_component::{
     Disableable, Icon as GpuiIcon, Sizable, Size,
 };
 
+use crate::assets;
 use crate::events;
-use crate::icons::parse_icon_name;
 use crate::runtime::JsHost;
 use crate::scene::{ElementProps, NodeId};
 use crate::style;
@@ -202,7 +203,7 @@ pub fn render_button(
     _cx: &mut App,
 ) -> AnyElement {
     let label = attr_str(props, "label").map(|s| s.to_string());
-    let icon = attr_str(props, "icon").and_then(parse_icon_name);
+    let icon_src = attr_str(props, "icon");
     let variant = attr_str(props, "variant").unwrap_or("primary");
     let size = attr_str(props, "size").unwrap_or("md");
     let disabled = attr_bool(props, "disabled");
@@ -211,8 +212,12 @@ pub fn render_button(
     if let Some(label) = label {
         btn = btn.label(SharedString::from(label));
     }
-    if let Some(icon) = icon {
-        btn = btn.icon(icon);
+    if let Some(src) = icon_src {
+        // Pass the resolved filesystem path through gpui-component's
+        // Icon::path() — the same path the standalone <Svg> primitive uses.
+        let path = assets::resolve(src);
+        let path_str = path.to_string_lossy().into_owned();
+        btn = btn.icon(GpuiIcon::default().path(SharedString::from(path_str)));
     }
     btn = match variant {
         "secondary" => btn.outline(),
@@ -246,31 +251,61 @@ pub fn render_button(
     btn.into_any_element()
 }
 
-// ─── icon ────────────────────────────────────────────────────────────────
+// ─── svg ─────────────────────────────────────────────────────────────────
 
-pub fn render_icon(props: &ElementProps) -> AnyElement {
-    let name = match attr_str(props, "name").and_then(parse_icon_name) {
-        Some(n) => n,
-        None => {
-            // Unknown / missing — render an empty box so the layout doesn't
-            // collapse and the typo is visually obvious.
-            return GpuiIcon::empty().into_any_element();
-        }
-    };
-    let size = attr_str(props, "size").unwrap_or("md");
+fn size_to_px(s: Option<&str>) -> gpui::Pixels {
+    match s {
+        Some("xs") => px(12.0),
+        Some("sm") => px(16.0),
+        Some("lg") => px(24.0),
+        Some(other) => other.parse::<f32>().map(px).unwrap_or(px(20.0)),
+        None => px(20.0),
+    }
+}
 
-    let mut icon = GpuiIcon::new(name);
-    icon = match size {
-        "xs" => icon.with_size(Size::XSmall),
-        "sm" => icon.with_size(Size::Small),
-        "lg" => icon.with_size(Size::Large),
-        _ => icon.with_size(Size::Medium),
+pub fn render_svg(props: &ElementProps) -> AnyElement {
+    let Some(src) = attr_str(props, "src") else {
+        return div().into_any_element();
     };
-    // Classes / style still apply via gpui_component::Icon's Styled impl,
-    // but our tailwind/style appliers only target `Div`. Plain class-based
-    // colouring on an Icon is V2; for now `Icon` ignores className/style.
-    let _ = (&props.classes, &props.style);
-    icon.into_any_element()
+    let path = assets::resolve(src);
+    let path_str = path.to_string_lossy().into_owned();
+
+    let s = size_to_px(attr_str(props, "size"));
+    let tint = attr_str(props, "tint")
+        .and_then(crate::style::parse_color_public);
+
+    let mut el = svg().path(SharedString::from(path_str)).w(s).h(s);
+    if let Some(c) = tint {
+        el = el.text_color(c);
+    }
+    el.into_any_element()
+}
+
+// ─── image ───────────────────────────────────────────────────────────────
+
+pub fn render_image(props: &ElementProps) -> AnyElement {
+    let Some(src) = attr_str(props, "src") else {
+        return div().into_any_element();
+    };
+    let path = assets::resolve(src);
+    let path_str = path.to_string_lossy().into_owned();
+
+    let mut el = img(SharedString::from(path_str));
+    if let Some(w) = props.attrs.get("width").and_then(|v| v.as_f64()) {
+        el = el.w(px(w as f32));
+    }
+    if let Some(h) = props.attrs.get("height").and_then(|v| v.as_f64()) {
+        el = el.h(px(h as f32));
+    }
+    if let Some(fit) = attr_str(props, "objectFit") {
+        el = el.object_fit(match fit {
+            "cover" => ObjectFit::Cover,
+            "fill" => ObjectFit::Fill,
+            "none" => ObjectFit::None,
+            _ => ObjectFit::Contain,
+        });
+    }
+    el.into_any_element()
 }
 
 // ─── checkbox (gpui-component) ───────────────────────────────────────────

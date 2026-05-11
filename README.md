@@ -87,7 +87,25 @@ examples/kanban/         the demo app (Cargo bin + React)
 | `ScrollView` | `scrollview` | GPUI `div.overflow_{x,y}_scroll` |
 | `Divider` | `divider` | `gpui_component::Divider` |
 | `Badge` | `badge` | Styled `div` with variant palette |
-| `Icon` | `icon` | `gpui_component::Icon` — lucide-based, 86 names via kebab-case (`name="chevron-left"`) |
+| `Svg` | `svg` | GPUI `svg()` element. Takes `src` (path), optional `size` and `tint`. |
+| `Image` | `image` | GPUI `img()` element. Takes `src`, `width`, `height`, `objectFit`. |
+
+**Icons are intentionally userland.** The framework ships `<Svg>` and `<Image>`; the consumer picks an icon set (lucide, heroicons, custom SVGs) and writes a one-line `Icon` wrapper. See `examples/kanban/src/App.tsx`:
+
+```tsx
+const iconPath = (name: string) => `icons/${name}.svg`;
+function Icon({ name, size }: { name: string; size?: SvgSize }) {
+    return <Svg src={iconPath(name)} size={size} />;
+}
+```
+
+Asset paths resolve against the `assets_dir` configured on the `App` builder:
+
+```rust
+valhalla::App::new()
+    .assets_dir(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets"))
+    .run()?
+```
 
 Adding a new primitive is a TS export (`createElement("foo", props)`) plus a Rust renderer (`match tag { "foo" => render_foo(...) }`).
 

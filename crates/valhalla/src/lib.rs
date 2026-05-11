@@ -9,8 +9,8 @@ use std::path::PathBuf;
 pub use anyhow;
 pub use gpui;
 
+mod assets;
 mod events;
-mod icons;
 mod input;
 mod loader;
 mod render;
@@ -33,6 +33,7 @@ pub struct App {
     title: String,
     bundle: Bundle,
     window_size: (f32, f32),
+    assets_dir: Option<PathBuf>,
 }
 
 impl Default for App {
@@ -47,6 +48,7 @@ impl App {
             title: "Valhalla".into(),
             bundle: Bundle::Auto,
             window_size: (800.0, 600.0),
+            assets_dir: None,
         }
     }
 
@@ -65,7 +67,18 @@ impl App {
         self
     }
 
+    /// Filesystem directory the framework joins with relative `src` props on
+    /// `<Svg>` / `<Image>` / `<Button icon="…" />`. Without this, relative
+    /// paths resolve against the current working directory.
+    pub fn assets_dir(mut self, dir: impl Into<PathBuf>) -> Self {
+        self.assets_dir = Some(dir.into());
+        self
+    }
+
     pub fn run(self) -> anyhow::Result<()> {
+        if let Some(dir) = self.assets_dir {
+            assets::set_assets_dir(dir);
+        }
         runtime::launch(self.title, self.bundle, self.window_size)
     }
 }

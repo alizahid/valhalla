@@ -83,7 +83,11 @@ export type ButtonSize = "xs" | "sm" | "md" | "lg";
 
 export type ButtonProps = {
     label?: string;
-    /** Optional leading icon. Renders before the label. */
+    /**
+     * Optional leading icon. A path string resolved against the app's
+     * assets directory (or absolute). Userland defines its own naming
+     * convention on top.
+     */
     icon?: string;
     children?: ReactNode;
     variant?: ButtonVariant;
@@ -189,112 +193,43 @@ export function Badge(props: BadgeProps) {
     return createElement("badge", props);
 }
 
-// ─── Icon ────────────────────────────────────────────────────────────────
-// Backed by gpui-component's bundled lucide icon set. `name` is kebab-case
-// matching Lucide's slugs (e.g. "chevron-left", "arrow-up", "trash-2").
-// Unknown names render as an empty placeholder rather than crashing —
-// useful when you're typing the name out and TS autocomplete misses.
+// ─── Svg ─────────────────────────────────────────────────────────────────
+// Vector image. `src` is a path relative to the app's assets directory
+// (set via App.assets_dir() in Rust) or an absolute path. `tint` colours
+// the SVG via fill-currentColor — same trick browsers use, same trick
+// Zed's icon system uses.
+//
+// Icons are intentionally NOT bundled with the framework. Pick your own
+// set (lucide, heroicons, your own SVGs) and reference them by path.
 
-export type IconName =
-    | "a-large-small"
-    | "arrow-down"
-    | "arrow-left"
-    | "arrow-right"
-    | "arrow-up"
-    | "asterisk"
-    | "bell"
-    | "book-open"
-    | "bot"
-    | "building-2"
-    | "calendar"
-    | "case-sensitive"
-    | "chart-pie"
-    | "check"
-    | "chevron-down"
-    | "chevron-left"
-    | "chevron-right"
-    | "chevrons-up-down"
-    | "chevron-up"
-    | "circle-check"
-    | "circle-user"
-    | "circle-x"
-    | "close"
-    | "x"
-    | "copy"
-    | "dash"
-    | "trash"
-    | "trash-2"
-    | "delete"
-    | "ellipsis"
-    | "ellipsis-vertical"
-    | "external-link"
-    | "eye"
-    | "eye-off"
-    | "file"
-    | "folder"
-    | "folder-closed"
-    | "folder-open"
-    | "frame"
-    | "gallery-vertical-end"
-    | "github"
-    | "globe"
-    | "heart"
-    | "heart-off"
-    | "inbox"
-    | "info"
-    | "inspector"
-    | "layout-dashboard"
-    | "loader"
-    | "loader-circle"
-    | "map"
-    | "maximize"
-    | "menu"
-    | "minimize"
-    | "minus"
-    | "moon"
-    | "palette"
-    | "panel-bottom"
-    | "panel-bottom-open"
-    | "panel-left"
-    | "panel-left-close"
-    | "panel-left-open"
-    | "panel-right"
-    | "panel-right-close"
-    | "panel-right-open"
-    | "plus"
-    | "redo"
-    | "redo-2"
-    | "replace"
-    | "resize-corner"
-    | "search"
-    | "settings"
-    | "settings-2"
-    | "sort-ascending"
-    | "sort-descending"
-    | "square-terminal"
-    | "star"
-    | "star-off"
-    | "sun"
-    | "thumbs-down"
-    | "thumbs-up"
-    | "triangle-alert"
-    | "undo"
-    | "undo-2"
-    | "user"
-    | "window-close"
-    | "window-maximize"
-    | "window-minimize"
-    | "window-restore";
+export type SvgSize = "xs" | "sm" | "md" | "lg" | number;
 
-export type IconSize = "xs" | "sm" | "md" | "lg";
-
-export type IconProps = {
-    name: IconName;
-    size?: IconSize;
+export type SvgProps = {
+    src: string;
+    size?: SvgSize;
+    /** CSS color string applied via SVG fill (`currentColor` in the file). */
+    tint?: string;
     className?: string;
     style?: CSSProperties;
 };
 
-export function Icon(props: IconProps) {
-    return createElement("icon", props);
+export function Svg(props: SvgProps) {
+    return createElement("svg", props);
+}
+
+// ─── Image ───────────────────────────────────────────────────────────────
+// Raster image. Same path-resolution rules as Svg.
+
+export type ImageProps = {
+    src: string;
+    width?: number;
+    height?: number;
+    /** Mirrors React Native's `resizeMode`. */
+    objectFit?: "contain" | "cover" | "fill" | "none";
+    className?: string;
+    style?: CSSProperties;
+};
+
+export function Image(props: ImageProps) {
+    return createElement("image", props);
 }

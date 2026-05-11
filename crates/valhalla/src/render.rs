@@ -77,7 +77,8 @@ fn render_element(
         "switch" => widgets::render_switch(node_id, props, js),
         "divider" => widgets::render_divider(props),
         "badge" => widgets::render_badge(props, rendered_children),
-        "icon" => widgets::render_icon(props),
+        "svg" => widgets::render_svg(props),
+        "image" => widgets::render_image(props),
 
         // Text input — still stubbed (renders the value as static text).
         "textinput" | "input" => crate::input::render_input(node_id, props, js),
