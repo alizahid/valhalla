@@ -1,30 +1,137 @@
-// A small Kanban-style task board. Built to push as much of the framework
-// as possible: every primitive in @valhalla/runtime gets used, the layout
-// is multi-column with a sidebar and detail panel, and most interactions
-// are event-driven (move/delete cards, toggle settings, mark urgent).
+// Kanban demo built entirely from Valhalla primitives.
+//
+// The framework only ships View / Text / Pressable / ScrollView / Svg /
+// Image / TextInput. Everything below — Button, Badge, Switch, Checkbox,
+// Divider, Icon — is userland code in this file, composed from those
+// primitives. Copy-paste any of these into your own app.
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
-    Badge,
-    Button,
-    Checkbox,
-    Divider,
     Pressable,
     ScrollView,
     Svg,
     type SvgSize,
-    Switch,
     Text,
     View,
 } from "@valhalla/runtime";
 
-// Userland icon convention. The framework ships <Svg src="..."> as the
-// primitive; choosing an icon set (lucide, heroicons, your own bundle)
-// belongs here, not in core. Paths resolve against the assets_dir
-// configured in src/main.rs — for this demo, examples/kanban/assets/.
+// ─── userland: Icon ──────────────────────────────────────────────────────
+
 const iconPath = (name: string) => `icons/${name}.svg`;
 function Icon({ name, size, tint }: { name: string; size?: SvgSize; tint?: string }) {
-    return <Svg src={iconPath(name)} size={size} tint={tint} />;
+    return <Svg src={iconPath(name)} size={size} tint={tint ?? "#cbd5e1"} />;
+}
+
+// ─── userland: Button ────────────────────────────────────────────────────
+
+type ButtonVariant = "primary" | "ghost" | "danger";
+type ButtonSize = "xs" | "sm" | "md";
+
+const BUTTON_VARIANT: Record<ButtonVariant, string> = {
+    primary: "bg-blue-600 text-white",
+    ghost: "bg-slate-700 text-slate-200",
+    danger: "bg-red-700 text-white",
+};
+const BUTTON_SIZE: Record<ButtonSize, string> = {
+    xs: "px-2 py-1 text-xs",
+    sm: "px-3 py-1 text-sm",
+    md: "px-4 py-2 text-base",
+};
+
+function Button(props: {
+    label?: string;
+    icon?: string;
+    variant?: ButtonVariant;
+    size?: ButtonSize;
+    onPress?: () => void;
+    children?: ReactNode;
+}) {
+    const variant = props.variant ?? "primary";
+    const size = props.size ?? "md";
+    return (
+        <Pressable
+            className={`flex flex-row items-center gap-1 rounded-md ${BUTTON_VARIANT[variant]} ${BUTTON_SIZE[size]}`}
+            onPress={props.onPress}
+        >
+            {props.icon && <Icon name={props.icon} size={size === "md" ? "sm" : "xs"} />}
+            {props.label && <Text>{props.label}</Text>}
+            {props.children}
+        </Pressable>
+    );
+}
+
+// ─── userland: Badge ─────────────────────────────────────────────────────
+
+type BadgeVariant = "default" | "info" | "warning" | "danger";
+const BADGE_VARIANT: Record<BadgeVariant, string> = {
+    default: "bg-slate-700 text-slate-200",
+    info: "bg-blue-700 text-blue-100",
+    warning: "bg-yellow-700 text-yellow-100",
+    danger: "bg-red-700 text-red-100",
+};
+
+function Badge(props: { children: ReactNode; variant?: BadgeVariant }) {
+    return (
+        <View
+            className={`flex flex-row items-center px-2 py-1 rounded-full text-xs ${BADGE_VARIANT[props.variant ?? "default"]}`}
+        >
+            <Text>{props.children}</Text>
+        </View>
+    );
+}
+
+// ─── userland: Switch ────────────────────────────────────────────────────
+
+function Switch(props: {
+    checked: boolean;
+    onValueChange?: (v: boolean) => void;
+    label?: string;
+}) {
+    return (
+        <Pressable
+            className="flex flex-row items-center gap-2"
+            onPress={() => props.onValueChange?.(!props.checked)}
+        >
+            <View
+                className={`w-10 h-6 rounded-full p-1 flex flex-row ${
+                    props.checked ? "bg-blue-600 justify-end" : "bg-slate-600 justify-start"
+                }`}
+            >
+                <View className="w-4 h-4 rounded-full bg-white" />
+            </View>
+            {props.label && <Text className="text-slate-300 text-sm">{props.label}</Text>}
+        </Pressable>
+    );
+}
+
+// ─── userland: Checkbox ──────────────────────────────────────────────────
+
+function Checkbox(props: {
+    checked: boolean;
+    onValueChange?: (v: boolean) => void;
+    label?: string;
+}) {
+    return (
+        <Pressable
+            className="flex flex-row items-center gap-2"
+            onPress={() => props.onValueChange?.(!props.checked)}
+        >
+            <View
+                className={`w-5 h-5 rounded items-center justify-center flex ${
+                    props.checked ? "bg-blue-600" : "bg-slate-700 border border-slate-500"
+                }`}
+            >
+                {props.checked && <Icon name="check" size="xs" tint="#ffffff" />}
+            </View>
+            {props.label && <Text className="text-slate-300 text-sm">{props.label}</Text>}
+        </Pressable>
+    );
+}
+
+// ─── userland: Divider ───────────────────────────────────────────────────
+
+function Divider() {
+    return <View className="w-full h-px bg-slate-700" />;
 }
 
 // ─── data model ──────────────────────────────────────────────────────────
@@ -41,10 +148,10 @@ type Card = {
     urgent: boolean;
 };
 
-const COLUMNS: { id: ColumnId; label: string; tone: string; icon: string }[] = [
-    { id: "backlog", label: "Backlog", tone: "bg-slate-700", icon: "inbox" },
-    { id: "doing", label: "In Progress", tone: "bg-blue-700", icon: "loader-circle" },
-    { id: "done", label: "Done", tone: "bg-green-700", icon: "circle-check" },
+const COLUMNS: { id: ColumnId; label: string; icon: string }[] = [
+    { id: "backlog", label: "Backlog", icon: "inbox" },
+    { id: "doing", label: "In Progress", icon: "loader-circle" },
+    { id: "done", label: "Done", icon: "circle-check" },
 ];
 
 const SEED: Card[] = [
@@ -116,9 +223,7 @@ const SAMPLE_TITLES = [
     "Animation system",
 ];
 
-// ─── small helpers ───────────────────────────────────────────────────────
-
-const priorityVariant = (p: Priority) =>
+const priorityVariant = (p: Priority): BadgeVariant =>
     p === "high" ? "danger" : p === "med" ? "warning" : "info";
 
 const nextColumn = (c: ColumnId): ColumnId | null =>
@@ -165,14 +270,7 @@ export default function App() {
         setNextId((n) => n + 1);
         setCards((cs) => [
             ...cs,
-            {
-                id,
-                title,
-                priority: "med",
-                tags: ["new"],
-                column,
-                urgent: false,
-            },
+            { id, title, priority: "med", tags: ["new"], column, urgent: false },
         ]);
         setSelectedId(id);
     };
@@ -195,11 +293,6 @@ export default function App() {
 
             <Divider />
 
-            {/*
-              * Horizontal scroller for the columns + detail panel. Each child
-              * has a fixed minimum width so they stay readable; if the window
-              * is narrower than the sum of the columns, this scrolls.
-              */}
             <ScrollView horizontal className="flex flex-row gap-4 p-4 size-full">
                 {COLUMNS.map((col) => {
                     if (!showDone && col.id === "done") return null;
@@ -209,7 +302,6 @@ export default function App() {
                             key={col.id}
                             id={col.id}
                             label={col.label}
-                            tone={col.tone}
                             icon={col.icon}
                             count={counts[col.id]}
                             cards={cardsHere}
@@ -255,7 +347,7 @@ function Header(props: {
     return (
         <View className="flex flex-row items-center justify-between px-6 py-4 bg-slate-800">
             <View className="flex flex-row items-center gap-3">
-                <Icon name="layout-dashboard" size="lg" />
+                <Icon name="layout-dashboard" size="lg" tint="#e2e8f0" />
                 <Text className="text-2xl text-white">Valhalla</Text>
                 <Badge variant="info">{props.total} tasks</Badge>
             </View>
@@ -270,7 +362,7 @@ function Header(props: {
                     onValueChange={props.onSortChange}
                     label="Sort by priority"
                 />
-                <Button icon={iconPath("settings")} variant="ghost" size="sm" />
+                <Button icon="settings" variant="ghost" size="sm" />
             </View>
         </View>
     );
@@ -281,7 +373,6 @@ function Header(props: {
 function Column(props: {
     id: ColumnId;
     label: string;
-    tone: string;
     icon: string;
     count: number;
     cards: Card[];
@@ -295,12 +386,12 @@ function Column(props: {
         <View className="flex flex-col gap-2 w-80 h-full bg-slate-800 rounded-lg p-3">
             <View className="flex flex-row items-center justify-between">
                 <View className="flex flex-row items-center gap-2">
-                    <Icon name={props.icon as any} size="sm" />
+                    <Icon name={props.icon} size="sm" tint="#e2e8f0" />
                     <Text className="text-white text-lg">{props.label}</Text>
                     <Badge>{props.count}</Badge>
                 </View>
                 <Button
-                    icon={iconPath("plus")}
+                    icon="plus"
                     label="Add"
                     variant="ghost"
                     size="sm"
@@ -344,19 +435,19 @@ function CardRow(props: {
     onMoveNext: () => void;
     onDelete: () => void;
 }) {
-    const ringClass = props.selected
-        ? "border-2 border-blue-400"
-        : "border border-slate-700";
-    const urgentClass = props.card.urgent ? "bg-red-900" : "bg-slate-900";
+    const border = props.selected ? "border-2 border-blue-400" : "border border-slate-700";
+    const bg = props.card.urgent ? "bg-red-900" : "bg-slate-900";
 
     return (
         <Pressable
-            className={`flex flex-col gap-2 p-3 rounded-md ${ringClass} ${urgentClass}`}
+            className={`flex flex-col gap-2 p-3 rounded-md ${border} ${bg}`}
             onPress={props.onSelect}
         >
             <View className="flex flex-row items-start justify-between gap-2">
                 <View className="flex flex-row items-center gap-2">
-                    {props.card.urgent && <Icon name="triangle-alert" size="sm" />}
+                    {props.card.urgent && (
+                        <Icon name="triangle-alert" size="sm" tint="#fca5a5" />
+                    )}
                     <Text className="text-white text-base">{props.card.title}</Text>
                 </View>
                 <Badge variant={priorityVariant(props.card.priority)}>
@@ -372,25 +463,10 @@ function CardRow(props: {
             )}
             <View className="flex flex-row items-center justify-between">
                 <View className="flex flex-row gap-1">
-                    <Button
-                        icon={iconPath("chevron-left")}
-                        variant="ghost"
-                        size="xs"
-                        onPress={props.onMovePrev}
-                    />
-                    <Button
-                        icon={iconPath("chevron-right")}
-                        variant="ghost"
-                        size="xs"
-                        onPress={props.onMoveNext}
-                    />
+                    <Button icon="chevron-left" variant="ghost" size="xs" onPress={props.onMovePrev} />
+                    <Button icon="chevron-right" variant="ghost" size="xs" onPress={props.onMoveNext} />
                 </View>
-                <Button
-                    icon={iconPath("trash-2")}
-                    variant="danger"
-                    size="xs"
-                    onPress={props.onDelete}
-                />
+                <Button icon="trash-2" variant="danger" size="xs" onPress={props.onDelete} />
             </View>
         </Pressable>
     );
@@ -406,7 +482,7 @@ function DetailPanel(props: {
 }) {
     if (!props.card) {
         return (
-            <View className="flex flex-col items-center justify-center gap-2 w-72 bg-slate-800 rounded-lg p-6">
+            <View className="flex flex-col items-center justify-center w-72 h-full bg-slate-800 rounded-lg p-6 gap-2">
                 <Icon name="folder-open" size="lg" />
                 <Text className="text-slate-400">Select a card to see details.</Text>
             </View>
@@ -415,18 +491,13 @@ function DetailPanel(props: {
     const card = props.card;
 
     return (
-        <View className="flex flex-col gap-3 w-72 bg-slate-800 rounded-lg p-4">
+        <View className="flex flex-col gap-3 w-72 h-full bg-slate-800 rounded-lg p-4">
             <View className="flex flex-row items-center justify-between">
                 <View className="flex flex-row items-center gap-2">
                     <Icon name="info" size="sm" />
                     <Text className="text-white text-lg">Details</Text>
                 </View>
-                <Button
-                    icon={iconPath("x")}
-                    variant="ghost"
-                    size="xs"
-                    onPress={props.onClose}
-                />
+                <Button icon="x" variant="ghost" size="xs" onPress={props.onClose} />
             </View>
             <Divider />
 

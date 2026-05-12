@@ -1,28 +1,18 @@
-//! Widget renderers.
+//! Widget renderers — gpui primitives only.
 //!
-//! Each function takes the Rust mirror of a node's props and returns an
-//! `AnyElement`. The render walk in `render.rs` calls into here based on the
-//! `tag` string emitted by JS. Most widgets are gpui-component primitives
-//! wrapped to accept Tailwind classes / `style` props and route their
-//! events back into JS via the handler-id table.
+//! The framework deliberately ships a small set: View, Text, Pressable,
+//! ScrollView, Svg, Image, TextInput. Everything else (buttons with
+//! variants, checkboxes, switches, badges, dividers, dropdowns…) lives
+//! in userland, built from these primitives. See `examples/kanban` for
+//! how a real app composes them.
 //!
-//! Every event handler goes through `cx.listener(...)`, which captures the
-//! root entity weakly. Inside the listener we (1) call into JS to fire the
-//! React handler — which runs setState synchronously and pushes new ops to
-//! `bridge.inbox` via `__host_commit` — and then (2) call `this.drain(cx)`
-//! to apply those ops and trigger `cx.notify()` so GPUI re-renders. Without
-//! the drain, clicks silently disappear after the first render.
+//! Every event handler goes through `cx.listener(...)` so the click
+//! closure can call `this.drain(cx)` after dispatching into JS — that
+//! applies the new ops React just committed and triggers a repaint.
 
 use gpui::{
-    div, img, prelude::*, px, AnyElement, ClickEvent, Context, ElementId, MouseButton, ObjectFit,
+    div, img, prelude::*, px, svg, AnyElement, ClickEvent, Context, ElementId, ObjectFit,
     SharedString,
-};
-use gpui_component::{
-    button::{Button as GpuiButton, ButtonVariants},
-    checkbox::Checkbox as GpuiCheckbox,
-    separator::Separator as GpuiSeparator,
-    switch::Switch as GpuiSwitch,
-    Disableable, Icon as GpuiIcon, Sizable, Size,
 };
 
 use crate::assets;
@@ -60,9 +50,10 @@ fn attr_str<'a>(props: &'a ElementProps, key: &str) -> Option<&'a str> {
     props.attrs.get(key).and_then(|v| v.as_str())
 }
 
-// ─── view / pressable ────────────────────────────────────────────────────
+// ─── view ────────────────────────────────────────────────────────────────
 
 pub fn render_view(
+    node_id: NodeId,
     props: &ElementProps,
     children: Vec<AnyElement>,
     cx: &mut Context<RootView>,
@@ -73,17 +64,26 @@ pub fn render_view(
     }
     el = style::apply(el, &props.style);
 
+    // A plain View doesn't need an id unless it has an onClick — gpui
+    // requires stateful elements (with id) for click handling.
     if let Some(&hid) = props.handlers.get("onClick") {
-        el = el.on_mouse_down(
-            MouseButton::Left,
-            cx.listener(move |this, _event, _window, cx| {
+        let id = element_id(node_id, "view");
+        let stateful = el.id(id);
+        return stateful
+            .on_click(cx.listener(move |this, _ev: &ClickEvent, _window, cx| {
                 dispatch_and_drain(this, hid, serde_json::json!({}), cx);
-            }),
-        );
+            }))
+            .children(children)
+            .into_any_element();
     }
 
     el.children(children).into_any_element()
 }
+
+// ─── pressable ───────────────────────────────────────────────────────────
+// Same shape as a clickable div in gpui's examples: an id'd div with
+// `.cursor_pointer().on_click(...)`. `onPress` is the RN-style name; we
+// accept `onClick` too for ergonomics.
 
 pub fn render_pressable(
     node_id: NodeId,
@@ -104,17 +104,14 @@ pub fn render_pressable(
             .get("onPress")
             .or_else(|| props.handlers.get("onClick"))
         {
-            el = el.on_mouse_down(
-                MouseButton::Left,
-                cx.listener(move |this, event: &gpui::MouseDownEvent, _window, cx| {
-                    let pos = event.position;
-                    let payload = serde_json::json!({
-                        "x": f32::from(pos.x),
-                        "y": f32::from(pos.y),
-                    });
-                    dispatch_and_drain(this, hid, payload, cx);
-                }),
-            );
+            el = el.on_click(cx.listener(move |this, ev: &ClickEvent, _window, cx| {
+                let pos = ev.position();
+                let payload = serde_json::json!({
+                    "x": f32::from(pos.x),
+                    "y": f32::from(pos.y),
+                });
+                dispatch_and_drain(this, hid, payload, cx);
+            }));
         }
     }
 
@@ -124,9 +121,10 @@ pub fn render_pressable(
 // ─── text ────────────────────────────────────────────────────────────────
 
 pub fn render_text(props: &ElementProps, children: Vec<AnyElement>) -> AnyElement {
-    // Text is rendered as a flex-row container so multiple inline children
-    // (interpolated strings, formatted spans) lay out correctly. The classes
-    // / style on `<Text>` apply to the whole line.
+    // Text is a flex-row container so multiple inline children (interpolated
+    // strings, formatted spans) lay out correctly. Classes / style on
+    // `<Text>` apply to the whole line; descendants inherit text color +
+    // font size via gpui's normal cascade.
     let mut el = div().flex_row();
     for op in tailwind::parse(&props.classes) {
         el = op(el);
@@ -157,103 +155,6 @@ pub fn render_scrollview(
     el.children(children).into_any_element()
 }
 
-// ─── divider ─────────────────────────────────────────────────────────────
-
-pub fn render_divider(props: &ElementProps) -> AnyElement {
-    let vertical = attr_bool(props, "vertical");
-    let label = attr_str(props, "label");
-    let mut sep = if vertical {
-        GpuiSeparator::vertical()
-    } else {
-        GpuiSeparator::horizontal()
-    };
-    if let Some(label) = label {
-        sep = sep.label(SharedString::from(label.to_string()));
-    }
-    sep.into_any_element()
-}
-
-// ─── badge ───────────────────────────────────────────────────────────────
-
-pub fn render_badge(props: &ElementProps, children: Vec<AnyElement>) -> AnyElement {
-    let variant = attr_str(props, "variant").unwrap_or("default");
-    let (bg, fg) = match variant {
-        "success" => (gpui::rgb(0xDCFCE7), gpui::rgb(0x166534)),
-        "warning" => (gpui::rgb(0xFEF3C7), gpui::rgb(0x854D0E)),
-        "danger" => (gpui::rgb(0xFEE2E2), gpui::rgb(0x991B1B)),
-        "info" => (gpui::rgb(0xDBEAFE), gpui::rgb(0x1E40AF)),
-        _ => (gpui::rgb(0xE5E7EB), gpui::rgb(0x374151)),
-    };
-    let mut el = div()
-        .flex()
-        .flex_row()
-        .items_center()
-        .px(px(8.0))
-        .py(px(2.0))
-        .rounded(px(9999.0))
-        .text_xs()
-        .bg(bg)
-        .text_color(fg);
-    for op in tailwind::parse(&props.classes) {
-        el = op(el);
-    }
-    el = style::apply(el, &props.style);
-    el.children(children).into_any_element()
-}
-
-// ─── button (gpui-component) ─────────────────────────────────────────────
-
-pub fn render_button(
-    node_id: NodeId,
-    props: &ElementProps,
-    cx: &mut Context<RootView>,
-) -> AnyElement {
-    let label = attr_str(props, "label").map(|s| s.to_string());
-    let icon_src = attr_str(props, "icon");
-    let variant = attr_str(props, "variant").unwrap_or("primary");
-    let size = attr_str(props, "size").unwrap_or("md");
-    let disabled = attr_bool(props, "disabled");
-
-    let mut btn = GpuiButton::new(element_id(node_id, "btn"));
-    if let Some(label) = label {
-        btn = btn.label(SharedString::from(label));
-    }
-    if let Some(src) = icon_src {
-        let path = assets::resolve(src);
-        let path_str = path.to_string_lossy().into_owned();
-        btn = btn.icon(GpuiIcon::default().path(SharedString::from(path_str)));
-    }
-    btn = match variant {
-        "secondary" => btn.outline(),
-        "ghost" => btn.ghost(),
-        "outline" => btn.outline(),
-        "danger" => btn.danger(),
-        "link" => btn.link(),
-        _ => btn.primary(),
-    };
-    btn = match size {
-        "xs" => btn.with_size(Size::XSmall),
-        "sm" => btn.with_size(Size::Small),
-        "lg" => btn.with_size(Size::Large),
-        _ => btn.with_size(Size::Medium),
-    };
-    if disabled {
-        btn = btn.disabled(true);
-    }
-
-    if let Some(&hid) = props
-        .handlers
-        .get("onPress")
-        .or_else(|| props.handlers.get("onClick"))
-    {
-        btn = btn.on_click(cx.listener(move |this, _ev: &ClickEvent, _window, cx| {
-            dispatch_and_drain(this, hid, serde_json::json!({}), cx);
-        }));
-    }
-
-    btn.into_any_element()
-}
-
 // ─── svg ─────────────────────────────────────────────────────────────────
 
 fn size_to_px(s: Option<&str>) -> gpui::Pixels {
@@ -266,10 +167,9 @@ fn size_to_px(s: Option<&str>) -> gpui::Pixels {
     }
 }
 
-/// Standalone `<Svg>`. Rendered via gpui-component's `Icon` so it inherits
-/// the cascaded text color (gpui's plain `svg()` defaults to black, which is
-/// invisible on dark backgrounds — the most common cause of "icons disappear"
-/// in earlier versions).
+/// `gpui::svg()` for SVG paths. Tint is applied via `text_color()` —
+/// gpui's SVG renderer uses that as the fill colour. Users who want
+/// inheritance from a surrounding theme can do their own wrapper.
 pub fn render_svg(props: &ElementProps) -> AnyElement {
     let Some(src) = attr_str(props, "src") else {
         return div().into_any_element();
@@ -278,11 +178,11 @@ pub fn render_svg(props: &ElementProps) -> AnyElement {
     let path_str = path.to_string_lossy().into_owned();
     let s = size_to_px(attr_str(props, "size"));
 
-    let mut icon = GpuiIcon::default().path(SharedString::from(path_str)).size(s);
-    if let Some(tint) = attr_str(props, "tint").and_then(style::parse_color_public) {
-        icon = icon.text_color(tint);
+    let mut el = svg().path(SharedString::from(path_str)).w(s).h(s);
+    if let Some(c) = attr_str(props, "tint").and_then(style::parse_color_public) {
+        el = el.text_color(c);
     }
-    icon.into_any_element()
+    el.into_any_element()
 }
 
 // ─── image ───────────────────────────────────────────────────────────────
@@ -310,56 +210,4 @@ pub fn render_image(props: &ElementProps) -> AnyElement {
         });
     }
     el.into_any_element()
-}
-
-// ─── checkbox (gpui-component) ───────────────────────────────────────────
-
-pub fn render_checkbox(
-    node_id: NodeId,
-    props: &ElementProps,
-    cx: &mut Context<RootView>,
-) -> AnyElement {
-    let checked = attr_bool(props, "checked");
-    let disabled = attr_bool(props, "disabled");
-    let label = attr_str(props, "label").map(|s| s.to_string());
-
-    let mut cb = GpuiCheckbox::new(element_id(node_id, "cb")).checked(checked);
-    if let Some(label) = label {
-        cb = cb.label(SharedString::from(label));
-    }
-    if disabled {
-        cb = cb.disabled(true);
-    }
-    if let Some(&hid) = props.handlers.get("onValueChange") {
-        cb = cb.on_click(cx.listener(move |this, new_value: &bool, _window, cx| {
-            dispatch_and_drain(this, hid, serde_json::json!({ "value": *new_value }), cx);
-        }));
-    }
-    cb.into_any_element()
-}
-
-// ─── switch (gpui-component) ─────────────────────────────────────────────
-
-pub fn render_switch(
-    node_id: NodeId,
-    props: &ElementProps,
-    cx: &mut Context<RootView>,
-) -> AnyElement {
-    let checked = attr_bool(props, "checked");
-    let disabled = attr_bool(props, "disabled");
-    let label = attr_str(props, "label").map(|s| s.to_string());
-
-    let mut sw = GpuiSwitch::new(element_id(node_id, "sw")).checked(checked);
-    if let Some(label) = label {
-        sw = sw.label(SharedString::from(label));
-    }
-    if disabled {
-        sw = sw.disabled(true);
-    }
-    if let Some(&hid) = props.handlers.get("onValueChange") {
-        sw = sw.on_click(cx.listener(move |this, new_value: &bool, _window, cx| {
-            dispatch_and_drain(this, hid, serde_json::json!({ "value": *new_value }), cx);
-        }));
-    }
-    sw.into_any_element()
 }

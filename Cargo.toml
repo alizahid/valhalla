@@ -13,7 +13,6 @@ repository = "https://github.com/alizahid/valhalla"
 
 [workspace.dependencies]
 gpui            = "0.2"
-gpui-component  = "0.5"
 rquickjs        = { version = "0.11", features = ["macro", "loader", "futures"] }
 serde           = { version = "1", features = ["derive"] }
 serde_json      = "1"
@@ -35,12 +34,8 @@ strip = true
 # and gpui-component's transitive dep with the upstream main branch, which
 # longbridge/gpui-component tracks too.
 # The published gpui 0.2.2 was built against an older Metal SDK; its shaders
-# fail to compile on current Xcode (zed#46486). Both gpui and gpui-component
-# need to come from git (gpui-component 0.5.1 on crates.io tracks an older
-# gpui API). The git refs intentionally have no `rev =` pin — adding one
-# desyncs source URLs with Zed's own internal workspace deps (gpui_platform
-# pulls gpui via path, lockfile sees two distinct sources). Cargo.lock is
-# what pins SHAs; do not run `cargo update` without intent.
+# fail to compile on current Xcode (zed#46486). Pull from git instead.
+# Cargo.lock pins SHAs; do not run `cargo update` without intent. Tracking
+# Zed's main keeps us aligned with whatever shader/API state it ships.
 [patch.crates-io]
 gpui = { git = "https://github.com/zed-industries/zed" }
-gpui-component = { git = "https://github.com/longbridge/gpui-component" }

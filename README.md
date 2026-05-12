@@ -73,29 +73,39 @@ examples/kanban/         the demo app (Cargo bin + React)
 
 ## Primitives
 
-`@valhalla/runtime` exports React-Native-shaped primitives. Each is a tag-based host element the Rust render walk dispatches on:
+`@valhalla/runtime` ships only what gpui itself exposes as primitives. Buttons, checkboxes, switches, badges, dividers — anything with visual opinions — are userland. The framework's job is to surface gpui's primitives in React; widget design is the consumer's.
 
 | Component | Tag | Renderer |
 |---|---|---|
 | `View` | `view` | GPUI `div` |
-| `Text` | `text` | GPUI `div` styled as text |
-| `Pressable` | `pressable` | GPUI `div` with `cursor_pointer` + click |
-| `Button` | `button` | `gpui_component::Button` (variants: `primary`, `secondary`, `ghost`, `outline`, `danger`, `link`) |
-| `TextInput` | `textinput` | (V1: read-only display; gpui-component TextField integration is next) |
-| `Checkbox` | `checkbox` | `gpui_component::Checkbox` |
-| `Switch` | `switch` | `gpui_component::Switch` |
-| `ScrollView` | `scrollview` | GPUI `div.overflow_{x,y}_scroll` |
-| `Divider` | `divider` | `gpui_component::Divider` |
-| `Badge` | `badge` | Styled `div` with variant palette |
-| `Svg` | `svg` | GPUI `svg()` element. Takes `src` (path), optional `size` and `tint`. |
-| `Image` | `image` | GPUI `img()` element. Takes `src`, `width`, `height`, `objectFit`. |
+| `Text` | `text` | GPUI text via a styled `div` |
+| `Pressable` | `pressable` | `div().id(...).cursor_pointer().on_click(...)` |
+| `ScrollView` | `scrollview` | `div().overflow_{x,y}_scroll()` |
+| `Svg` | `svg` | `gpui::svg().path(...)`. `tint` sets the fill via `text_color`. |
+| `Image` | `image` | `gpui::img(...)` with `width`/`height`/`objectFit`. |
+| `TextInput` | `textinput` | (V1 stub — renders the value as static text.) |
 
-**Icons are intentionally userland.** The framework ships `<Svg>` and `<Image>`; the consumer picks an icon set (lucide, heroicons, custom SVGs) and writes a one-line `Icon` wrapper. See `examples/kanban/src/App.tsx`:
+Adding a new primitive is a TS export (`createElement("foo", props)`) plus a Rust renderer (`match tag { "foo" => render_foo(...) }`).
+
+**Userland builds widgets.** `examples/kanban/src/App.tsx` shows how — `Button`, `Badge`, `Switch`, `Checkbox`, `Divider`, and `Icon` are all defined at the top of that file in <100 lines using only the primitives. Copy them into your own app, or design something completely different.
 
 ```tsx
+// userland Icon, ~5 lines:
 const iconPath = (name: string) => `icons/${name}.svg`;
 function Icon({ name, size }: { name: string; size?: SvgSize }) {
-    return <Svg src={iconPath(name)} size={size} />;
+    return <Svg src={iconPath(name)} size={size} tint="#cbd5e1" />;
+}
+
+// userland Button, ~20 lines, no framework involvement:
+function Button({ label, variant = "primary", onPress }: {...}) {
+    return (
+        <Pressable
+            className={`flex flex-row items-center gap-1 rounded-md px-3 py-1 ${BUTTON_VARIANT[variant]}`}
+            onPress={onPress}
+        >
+            <Text>{label}</Text>
+        </Pressable>
+    );
 }
 ```
 
@@ -106,8 +116,6 @@ valhalla::App::new()
     .assets_dir(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets"))
     .run()?
 ```
-
-Adding a new primitive is a TS export (`createElement("foo", props)`) plus a Rust renderer (`match tag { "foo" => render_foo(...) }`).
 
 ## What works today
 

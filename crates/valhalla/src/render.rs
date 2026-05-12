@@ -1,12 +1,12 @@
 //! Walk `SceneTree` and produce GPUI elements.
 //!
-//! Each element node has a `tag` string set by the JS-side React component
-//! wrapper. We dispatch on it here. Unknown tags fall through to a `view`
-//! renderer so future primitives can be added in JS first without breaking
-//! the host.
+//! The framework ships only a handful of primitives — anything else
+//! (buttons, badges, checkboxes, switches…) is built in userland from
+//! these primitives. Unknown tags fall through to a plain View renderer
+//! so userland React components that resolve to unknown host elements
+//! (typos, future primitives) don't blank the window.
 
 use gpui::{div, prelude::*, AnyElement, Context, SharedString, Window};
-use gpui_component::ActiveTheme;
 
 use crate::runtime::RootView;
 use crate::scene::{ElementProps, Node, NodeId, SceneTree};
@@ -17,17 +17,12 @@ pub fn render_root(
     window: &mut Window,
     cx: &mut Context<RootView>,
 ) -> AnyElement {
-    // gpui's text rendering uses `rem` units; rems multiply against
-    // window.rem_size(). gpui-component's theme is the source of truth.
-    // Apply font_family + default text_color from the theme too so any
-    // text not styled by user classes is still legible (theme-correct).
-    let theme = cx.theme();
-    window.set_rem_size(theme.font_size);
+    // gpui defaults to a 16px rem and the platform's UI font; that's fine
+    // for our purposes — the consumer's React app drives styling via
+    // Tailwind classes / style props from the tree on down.
+    let _ = window;
 
-    let mut container = div()
-        .size_full()
-        .font_family(theme.font_family.clone())
-        .text_color(theme.foreground);
+    let mut container = div().size_full();
 
     if let Some(id) = this.scene.root() {
         let element = render_node(&this.scene, id, window, cx);
@@ -68,35 +63,23 @@ fn render_element(
     window: &mut Window,
     cx: &mut Context<RootView>,
 ) -> AnyElement {
-    // Resolve children up-front so each widget renderer receives a Vec it
-    // can drop into `.children(...)`. This pulls each child through the
-    // walk recursively.
     let rendered_children: Vec<AnyElement> = children
         .iter()
         .map(|&id| render_node(scene, id, window, cx))
         .collect();
 
     match tag {
-        // Layout / structural primitives.
-        "view" | "div" => widgets::render_view(props, rendered_children, cx),
+        // Primitives — these are the entire framework surface.
+        "view" | "div" => widgets::render_view(node_id, props, rendered_children, cx),
         "pressable" => widgets::render_pressable(node_id, props, rendered_children, cx),
         "text" | "span" => widgets::render_text(props, rendered_children),
         "scrollview" => widgets::render_scrollview(node_id, props, rendered_children),
-
-        // gpui-component widgets.
-        "button" => widgets::render_button(node_id, props, cx),
-        "checkbox" => widgets::render_checkbox(node_id, props, cx),
-        "switch" => widgets::render_switch(node_id, props, cx),
-        "divider" => widgets::render_divider(props),
-        "badge" => widgets::render_badge(props, rendered_children),
         "svg" => widgets::render_svg(props),
-        "image" => widgets::render_image(props),
-
-        // Text input — still stubbed (renders the value as static text).
+        "image" | "img" => widgets::render_image(props),
         "textinput" | "input" => crate::input::render_input(node_id, props, cx),
 
-        // Unknown tag: render as a view so a typo or future primitive doesn't
-        // make the whole window go blank.
-        _ => widgets::render_view(props, rendered_children, cx),
+        // Unknown tag: treat as a view so userland tags or typos don't
+        // blank the window.
+        _ => widgets::render_view(node_id, props, rendered_children, cx),
     }
 }

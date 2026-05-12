@@ -100,14 +100,10 @@ pub(crate) fn launch(
     // `gpui_platform::application()` is the modern constructor — it picks
     // the right `Platform` impl per OS so we don't need cfg gating.
     // `with_assets` registers a filesystem loader so gpui's svg() / img() /
-    // text rendering can pull SVG paths from disk and gpui-component can
-    // load any bundled font / theme assets it expects.
+    // text rendering can pull SVG paths from disk.
     gpui_platform::application()
         .with_assets(FsAssets)
         .run(move |cx: &mut GpuiApp| {
-        // Set up gpui-component's themes / fonts before any widget is built.
-        gpui_component::init(cx);
-
         let bounds = Bounds::centered(None, size(px(window_size.0), px(window_size.1)), cx);
         let opts = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),

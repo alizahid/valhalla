@@ -1,7 +1,10 @@
-// React-Native-shaped primitives. Each one is a thin wrapper that maps to a
-// host element name the Rust render walk dispatches on. No hidden behaviour
-// in the wrapper — everything observable goes through the JSX → mutation-op
-// pipeline.
+// Framework primitives — only what gpui itself provides.
+//
+// View, Text, Pressable, ScrollView, Svg, Image, TextInput. That's the
+// entire library surface. Buttons / Checkboxes / Switches / Badges /
+// Dividers / Modals / Tooltips are userland concerns — compose them
+// from the primitives below. Look at `examples/kanban/src/App.tsx` for
+// a worked example.
 //
 // Tag names are lowercase strings. React treats lowercase JSX as host
 // elements (the renderer's responsibility) and PascalCase as components.
@@ -33,9 +36,10 @@ type CommonProps = {
 };
 
 // ─── View ────────────────────────────────────────────────────────────────
-// Generic flex container. Maps to GPUI `div`. Use for layout.
+// Generic flex container. Maps to GPUI `div`.
 
 export type ViewProps = CommonProps & {
+    onClick?: (event: ClickEvent) => void;
     onKeyDown?: (event: KeyEvent) => void;
     onKeyUp?: (event: KeyEvent) => void;
 };
@@ -45,8 +49,8 @@ export function View(props: ViewProps) {
 }
 
 // ─── Text ────────────────────────────────────────────────────────────────
-// Text container. Children are strings or further inline content. Styling
-// (color, size, weight) applies to the contained text.
+// Text container. Children are strings or further inline content.
+// Styling (color, size, weight) applies to the contained text.
 
 export type TextProps = CommonProps & {
     numberOfLines?: number;
@@ -57,7 +61,7 @@ export function Text(props: TextProps) {
 }
 
 // ─── Pressable ───────────────────────────────────────────────────────────
-// Clickable wrapper. Same as View but with `onPress`.
+// Clickable wrapper. Build buttons / pressable cards / list rows on top.
 
 export type PressableProps = CommonProps & {
     onPress?: (event: ClickEvent) => void;
@@ -66,40 +70,6 @@ export type PressableProps = CommonProps & {
 
 export function Pressable(props: PressableProps) {
     return createElement("pressable", props);
-}
-
-// ─── Button ──────────────────────────────────────────────────────────────
-// gpui-component Button. Variants follow shadcn/ui conventions.
-
-export type ButtonVariant =
-    | "primary"
-    | "secondary"
-    | "ghost"
-    | "outline"
-    | "danger"
-    | "link";
-
-export type ButtonSize = "xs" | "sm" | "md" | "lg";
-
-export type ButtonProps = {
-    label?: string;
-    /**
-     * Optional leading icon. A path string resolved against the app's
-     * assets directory (or absolute). Userland defines its own naming
-     * convention on top.
-     */
-    icon?: string;
-    children?: ReactNode;
-    variant?: ButtonVariant;
-    size?: ButtonSize;
-    disabled?: boolean;
-    onPress?: (event: ClickEvent) => void;
-    className?: string;
-    style?: CSSProperties;
-};
-
-export function Button(props: ButtonProps) {
-    return createElement("button", props);
 }
 
 // ─── ScrollView ──────────────────────────────────────────────────────────
@@ -114,7 +84,8 @@ export function ScrollView(props: ScrollViewProps) {
 }
 
 // ─── TextInput ───────────────────────────────────────────────────────────
-// Single-line text input.
+// Single-line text input. V1 stub — renders as a div showing the current
+// value / placeholder, no editing yet.
 
 export type TextInputProps = {
     value: string;
@@ -135,79 +106,18 @@ export function TextInput(props: TextInputProps) {
     return createElement("textinput", props);
 }
 
-// ─── Checkbox ────────────────────────────────────────────────────────────
-// gpui-component Checkbox.
-
-export type CheckboxProps = {
-    checked: boolean;
-    onValueChange?: (value: boolean) => void;
-    label?: string;
-    disabled?: boolean;
-    className?: string;
-    style?: CSSProperties;
-};
-
-export function Checkbox(props: CheckboxProps) {
-    return createElement("checkbox", props);
-}
-
-// ─── Switch ──────────────────────────────────────────────────────────────
-// gpui-component Switch.
-
-export type SwitchProps = {
-    checked: boolean;
-    onValueChange?: (value: boolean) => void;
-    label?: string;
-    disabled?: boolean;
-    className?: string;
-    style?: CSSProperties;
-};
-
-export function Switch(props: SwitchProps) {
-    return createElement("switch", props);
-}
-
-// ─── Divider ─────────────────────────────────────────────────────────────
-// Horizontal or vertical separator.
-
-export type DividerProps = {
-    vertical?: boolean;
-    label?: string;
-    className?: string;
-    style?: CSSProperties;
-};
-
-export function Divider(props: DividerProps) {
-    return createElement("divider", props);
-}
-
-// ─── Badge ───────────────────────────────────────────────────────────────
-// Small colored label. Implemented as a styled View; users can also build
-// their own with className alone.
-
-export type BadgeProps = CommonProps & {
-    variant?: "default" | "success" | "warning" | "danger" | "info";
-};
-
-export function Badge(props: BadgeProps) {
-    return createElement("badge", props);
-}
-
 // ─── Svg ─────────────────────────────────────────────────────────────────
-// Vector image. `src` is a path relative to the app's assets directory
-// (set via App.assets_dir() in Rust) or an absolute path. `tint` colours
-// the SVG via fill-currentColor — same trick browsers use, same trick
-// Zed's icon system uses.
-//
-// Icons are intentionally NOT bundled with the framework. Pick your own
-// set (lucide, heroicons, your own SVGs) and reference them by path.
+// Vector image. `src` is a path resolved against the app's assets
+// directory (set via App.assets_dir() in Rust) or an absolute path.
+// `tint` applies a fill color via gpui's `text_color()` on the SVG.
 
 export type SvgSize = "xs" | "sm" | "md" | "lg" | number;
 
 export type SvgProps = {
     src: string;
     size?: SvgSize;
-    /** CSS color string applied via SVG fill (`currentColor` in the file). */
+    /** CSS color string. Sets gpui's `text_color` on the SVG, which acts
+     * as the fill / stroke (depends on the SVG using `currentColor`). */
     tint?: string;
     className?: string;
     style?: CSSProperties;
