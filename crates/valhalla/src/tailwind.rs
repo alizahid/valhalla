@@ -28,6 +28,7 @@ fn parse_one(class: &str) -> Option<StyleOp> {
         "flex" => return Some(Box::new(|d: Div| d.flex())),
         "flex-col" => return Some(Box::new(|d: Div| d.flex_col())),
         "flex-row" => return Some(Box::new(|d: Div| d.flex_row())),
+        "flex-1" => return Some(Box::new(|d: Div| d.flex_1())),
         "items-center" => return Some(Box::new(|d: Div| d.items_center())),
         "items-start" => return Some(Box::new(|d: Div| d.items_start())),
         "items-end" => return Some(Box::new(|d: Div| d.items_end())),
@@ -50,6 +51,14 @@ fn parse_one(class: &str) -> Option<StyleOp> {
         "text-xl" => return Some(Box::new(|d: Div| d.text_xl())),
         "text-2xl" => return Some(Box::new(|d: Div| d.text_2xl())),
         "text-3xl" => return Some(Box::new(|d: Div| d.text_3xl())),
+        // GPUI has no text_4xl/5xl helpers; use the Tailwind px values.
+        "text-4xl" => return Some(Box::new(|d: Div| d.text_size(px(36.0)))),
+        "text-5xl" => return Some(Box::new(|d: Div| d.text_size(px(48.0)))),
+        "font-semibold" => {
+            return Some(Box::new(|d: Div| d.font_weight(gpui::FontWeight::SEMIBOLD)))
+        }
+        "font-bold" => return Some(Box::new(|d: Div| d.font_weight(gpui::FontWeight::BOLD))),
+        "line-through" => return Some(Box::new(|d: Div| d.line_through())),
         _ => {}
     }
 
@@ -222,6 +231,21 @@ fn palette(name: &str) -> Option<u32> {
             ],
         ),
         (
+            "orange",
+            &[
+                (50, 0xFFF7ED),
+                (100, 0xFFEDD5),
+                (200, 0xFED7AA),
+                (300, 0xFDBA74),
+                (400, 0xFB923C),
+                (500, 0xF97316),
+                (600, 0xEA580C),
+                (700, 0xC2410C),
+                (800, 0x9A3412),
+                (900, 0x7C2D12),
+            ],
+        ),
+        (
             "yellow",
             &[
                 (50, 0xFEFCE8),
@@ -253,7 +277,7 @@ fn palette(name: &str) -> Option<u32> {
 #[cfg(test)]
 fn apply_all(classes: &[&str]) -> Div {
     let owned: Vec<String> = classes.iter().map(|s| s.to_string()).collect();
-    let mut d = div();
+    let mut d = gpui::div();
     for op in parse(&owned) {
         d = op(d);
     }
@@ -278,5 +302,25 @@ mod tests {
     fn unknown_classes_are_dropped() {
         let ops = parse(&["totally-made-up".into(), "p-2".into()]);
         assert_eq!(ops.len(), 1);
+    }
+
+    #[test]
+    fn parses_typography_and_flex_grow() {
+        let _ = apply_all(&["flex-1", "font-bold", "font-semibold", "line-through", "text-5xl"]);
+        let ops = parse(&[
+            "flex-1".into(),
+            "font-bold".into(),
+            "text-4xl".into(),
+            "text-5xl".into(),
+            "line-through".into(),
+        ]);
+        assert_eq!(ops.len(), 5);
+    }
+
+    #[test]
+    fn orange_palette_resolves() {
+        assert_eq!(palette("orange-500"), Some(0xF97316));
+        let ops = parse(&["bg-orange-500".into(), "text-orange-500".into()]);
+        assert_eq!(ops.len(), 2);
     }
 }

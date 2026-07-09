@@ -8,7 +8,10 @@ repository.workspace = true
 
 [dependencies]
 gpui              = { workspace = true }
-gpui_platform     = { git = "https://github.com/zed-industries/zed", features = ["font-kit"] }
+# `wayland`/`x11` gate the Linux windowing backends and default OFF in
+# gpui_platform — without them the Linux build panics with "unreachable"
+# at startup. They're no-ops on macOS/Windows.
+gpui_platform     = { git = "https://github.com/zed-industries/zed", features = ["font-kit", "wayland", "x11"] }
 rquickjs          = { workspace = true }
 serde             = { workspace = true }
 serde_json        = { workspace = true }

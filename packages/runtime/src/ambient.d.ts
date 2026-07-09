@@ -10,6 +10,13 @@ declare global {
 
     // Set by the runtime at module load; called by Rust on every event.
     var __dispatchEvent: ((handlerId: number, payloadJson: string) => void) | undefined;
+
+    // Browser-ish globals provided by the host's JS shim (runtime.rs).
+    // We compile with lib: ["ES2022"] and no DOM types, so declare the
+    // few we rely on ourselves.
+    function setTimeout(callback: (...args: unknown[]) => void, ms?: number): number;
+    function clearTimeout(id: number): void;
+    function queueMicrotask(callback: () => void): void;
 }
 
 export {};
