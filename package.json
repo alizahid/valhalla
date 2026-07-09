@@ -11,9 +11,10 @@
         "build:plugin": "bun --filter @valhalla/vite build",
         "build:packages": "bun run build:runtime && bun run build:plugin",
         "dev": "bun run dev:kanban",
-        "dev:kanban": "bun --filter kanban build && concurrently --kill-others-on-fail --names 'vite,cargo' --prefix-colors 'cyan,yellow' 'bun --filter kanban watch' 'cargo watch -w examples/kanban/dist -d 0.5 -x \"run -p kanban\"'",
-        "dev:calculator": "bun --filter calculator build && concurrently --kill-others-on-fail --names 'vite,cargo' --prefix-colors 'cyan,yellow' 'bun --filter calculator watch' 'cargo watch -w examples/calculator/dist -d 0.5 -x \"run -p calculator\"'",
-        "dev:todo": "bun --filter todo build && concurrently --kill-others-on-fail --names 'vite,cargo' --prefix-colors 'cyan,yellow' 'bun --filter todo watch' 'cargo watch -w examples/todo/dist -d 0.5 -x \"run -p todo\"'"
+        "preflight": "cargo watch --version >/dev/null 2>&1 || (echo '\nerror: cargo-watch is not installed (the dev scripts use it to restart the app on rebuilds).\nInstall it with:\n\n    cargo install cargo-watch\n' && exit 1)",
+        "dev:kanban": "bun run preflight && bun --filter kanban build && concurrently --kill-others-on-fail --names 'vite,cargo' --prefix-colors 'cyan,yellow' 'bun --filter kanban watch' 'cargo watch -w examples/kanban/dist -d 0.5 -x \"run -p kanban\"'",
+        "dev:calculator": "bun run preflight && bun --filter calculator build && concurrently --kill-others-on-fail --names 'vite,cargo' --prefix-colors 'cyan,yellow' 'bun --filter calculator watch' 'cargo watch -w examples/calculator/dist -d 0.5 -x \"run -p calculator\"'",
+        "dev:todo": "bun run preflight && bun --filter todo build && concurrently --kill-others-on-fail --names 'vite,cargo' --prefix-colors 'cyan,yellow' 'bun --filter todo watch' 'cargo watch -w examples/todo/dist -d 0.5 -x \"run -p todo\"'"
     },
     "devDependencies": {
         "concurrently": "^9.1.0",
