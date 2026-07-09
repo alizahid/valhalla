@@ -2,7 +2,22 @@
 //! emits, print the resulting scene tree. No GPUI involvement — this lets
 //! us validate the JS bridge without booting a window.
 //!
-//! Run with: `cargo run --bin valhalla-headless -- path/to/bundle.js`.
+//! Run with:
+//!
+//! ```sh
+//! cargo run --bin valhalla-headless -- path/to/bundle.js
+//! ```
+//!
+//! Optionally simulate clicks after mount. Each `--press LABEL` finds the
+//! first element (DFS order) that has an `onPress`/`onClick` handler and
+//! whose subtree text equals LABEL, dispatches the handler into JS, and
+//! applies the resulting ops. This drives real user flows end-to-end:
+//!
+//! ```sh
+//! cargo run --bin valhalla-headless -- examples/calculator/dist/bundle.js \
+//!     --press 7 --press + --press 8 --press =
+//! # scene tree now shows "15" in the display
+//! ```
 
 use std::env;
 use std::path::PathBuf;
@@ -23,7 +38,6 @@ fn install_browser_shims<'js>(ctx: &rquickjs::Ctx<'js>) -> rquickjs::Result<()> 
     // already drains.
     let prelude = r#"
         (function() {
-            const microtasks = [];
             globalThis.queueMicrotask = (cb) => {
                 Promise.resolve().then(cb);
             };
@@ -54,15 +68,42 @@ fn install_browser_shims<'js>(ctx: &rquickjs::Ctx<'js>) -> rquickjs::Result<()> 
     Ok(())
 }
 
+struct Cli {
+    bundle: PathBuf,
+    presses: Vec<String>,
+    quiet_ops: bool,
+}
+
+fn parse_cli() -> anyhow::Result<Cli> {
+    let mut bundle = None;
+    let mut presses = Vec::new();
+    let mut quiet_ops = false;
+    let mut args = env::args().skip(1);
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--press" => {
+                let label = args.next().context("--press requires a LABEL argument")?;
+                presses.push(label);
+            }
+            "--quiet-ops" => quiet_ops = true,
+            _ if bundle.is_none() => bundle = Some(PathBuf::from(arg)),
+            other => anyhow::bail!("unexpected argument: {}", other),
+        }
+    }
+    Ok(Cli {
+        bundle: bundle
+            .context("usage: valhalla-headless <bundle.js> [--quiet-ops] [--press LABEL]...")?,
+        presses,
+        quiet_ops,
+    })
+}
+
 fn main() -> anyhow::Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
-    let path = env::args()
-        .nth(1)
-        .map(PathBuf::from)
-        .context("usage: valhalla-headless <bundle.js>")?;
-    let source = std::fs::read_to_string(&path)
-        .with_context(|| format!("reading bundle from {}", path.display()))?;
+    let cli = parse_cli()?;
+    let source = std::fs::read_to_string(&cli.bundle)
+        .with_context(|| format!("reading bundle from {}", cli.bundle.display()))?;
 
     let runtime = JsRuntime::new()?;
     let ctx = JsContext::full(&runtime)?;
@@ -102,11 +143,7 @@ fn main() -> anyhow::Result<()> {
         }
     })?;
 
-    while runtime.is_job_pending() {
-        runtime
-            .execute_pending_job()
-            .map_err(|e| anyhow::anyhow!("pending job error: {:?}", e))?;
-    }
+    drain_jobs(&runtime)?;
 
     let captured_ops = std::mem::take(&mut *inbox.lock().unwrap());
     let captured_logs = std::mem::take(&mut *logs.lock().unwrap());
@@ -117,8 +154,10 @@ fn main() -> anyhow::Result<()> {
     }
 
     println!("=== ops ({} total) ===", captured_ops.len());
-    for op in &captured_ops {
-        println!("  {:?}", op);
+    if !cli.quiet_ops {
+        for op in &captured_ops {
+            println!("  {:?}", op);
+        }
     }
 
     let mut scene = SceneTree::new();
@@ -130,35 +169,104 @@ fn main() -> anyhow::Result<()> {
         print_tree(&scene, root_id, 0);
     }
 
-    // Synthetic click on handler 2 (the "+" button per the demo). We expect
-    // React to setState, re-render, and re-emit ops with the count text now
-    // showing 1 instead of 0.
-    println!("\n=== dispatching click on handler 2 (the + button) ===");
-    ctx.with(|ctx| -> rquickjs::Result<()> {
-        let dispatch: Function = ctx.globals().get("__dispatchEvent")?;
-        let _: () = dispatch.call((2u32, "{}".to_string()))?;
-        Ok(())
-    })?;
+    // Simulated presses. Each one is looked up fresh against the current
+    // scene (handler IDs churn across re-renders, so labels are the stable
+    // way to address a button).
+    for label in &cli.presses {
+        let handler = find_press_handler(&scene, label)
+            .with_context(|| format!("no pressable element with text {:?} found", label))?;
+        println!("\n=== press {:?} (handler {}) ===", label, handler);
+        ctx.with(|ctx| -> rquickjs::Result<()> {
+            let dispatch: Function = ctx.globals().get("__dispatchEvent")?;
+            let _: () = dispatch.call((handler, "{}".to_string()))?;
+            Ok(())
+        })?;
+        drain_jobs(&runtime)?;
+
+        let ops = std::mem::take(&mut *inbox.lock().unwrap());
+        println!("=== ops after press ({} total) ===", ops.len());
+        if !cli.quiet_ops {
+            for op in &ops {
+                println!("  {:?}", op);
+            }
+        }
+        for op in ops {
+            scene.apply(op);
+        }
+    }
+
+    if !cli.presses.is_empty() {
+        if let Some(root_id) = scene.root() {
+            println!("\n=== final scene ===");
+            print_tree(&scene, root_id, 0);
+        }
+    }
+
+    Ok(())
+}
+
+fn drain_jobs(runtime: &JsRuntime) -> anyhow::Result<()> {
     while runtime.is_job_pending() {
         runtime
             .execute_pending_job()
             .map_err(|e| anyhow::anyhow!("pending job error: {:?}", e))?;
     }
-
-    let after_click = std::mem::take(&mut *inbox.lock().unwrap());
-    println!("=== ops after click ({} total) ===", after_click.len());
-    for op in &after_click {
-        println!("  {:?}", op);
-    }
-    for op in after_click {
-        scene.apply(op);
-    }
-    if let Some(root_id) = scene.root() {
-        println!("\n=== scene after click ===");
-        print_tree(&scene, root_id, 0);
-    }
-
     Ok(())
+}
+
+/// Find the handler for the element best matching `label`. Exact subtree
+/// text match wins; otherwise the pressable with the shortest subtree text
+/// that *contains* the label (most specific ancestor — e.g. a suggestion
+/// row whose corner badge says "Add").
+fn find_press_handler(scene: &SceneTree, label: &str) -> Option<u32> {
+    let root = scene.root()?;
+    let mut exact: Option<u32> = None;
+    let mut containing: Option<(usize, u32)> = None;
+    let mut stack = vec![root];
+    while let Some(id) = stack.pop() {
+        if let Some(Node::Element {
+            props, children, ..
+        }) = scene.get(id)
+        {
+            let handler = props
+                .handlers
+                .get("onPress")
+                .or_else(|| props.handlers.get("onClick"));
+            if let Some(&h) = handler {
+                let text = subtree_text(scene, id);
+                let text = text.trim();
+                if text == label && exact.is_none() {
+                    exact = Some(h);
+                } else if text.contains(label)
+                    && containing.map_or(true, |(len, _)| text.len() < len)
+                {
+                    containing = Some((text.len(), h));
+                }
+            }
+            // Push in reverse so DFS visits children in document order.
+            for &c in children.iter().rev() {
+                stack.push(c);
+            }
+        }
+    }
+    exact.or(containing.map(|(_, h)| h))
+}
+
+fn subtree_text(scene: &SceneTree, id: NodeId) -> String {
+    let mut out = String::new();
+    let mut stack = vec![id];
+    while let Some(id) = stack.pop() {
+        match scene.get(id) {
+            Some(Node::Text { value }) => out.push_str(value),
+            Some(Node::Element { children, .. }) => {
+                for &c in children.iter().rev() {
+                    stack.push(c);
+                }
+            }
+            None => {}
+        }
+    }
+    out
 }
 
 fn print_tree(scene: &SceneTree, id: NodeId, depth: usize) {
