@@ -2,7 +2,9 @@
 resolver = "2"
 members = [
     "crates/valhalla",
+    "examples/calculator",
     "examples/kanban",
+    "examples/todo",
 ]
 
 [workspace.package]

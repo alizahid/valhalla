@@ -1,0 +1,14 @@
+[package]
+name = "calculator"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[[bin]]
+name = "calculator"
+path = "src/main.rs"
+
+[dependencies]
+valhalla = { path = "../../crates/valhalla" }
+anyhow   = { workspace = true }
+env_logger = { workspace = true }
