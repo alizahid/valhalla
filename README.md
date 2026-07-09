@@ -6,6 +6,14 @@
 
 Valhalla is a proof-of-concept "React Native, but desktop." You write React + Tailwind in TypeScript; it renders through Zed's [GPUI](https://www.gpui.rs/) framework as a native, GPU-accelerated desktop app. There's no Electron, no webview, no DOM.
 
+| Calculator | Todos |
+|---|---|
+| ![Calculator demo](docs/screenshots/calculator.png) | ![Todo demo](docs/screenshots/todo.png) |
+
+![Kanban demo](docs/screenshots/kanban.png)
+
+These are real windows: GPUI + wgpu rendering React + Tailwind output, captured under Xvfb with a software Vulkan driver. In the calculator shot, "7" has just been clicked with a synthetic mouse event — the display updated and "AC" flipped to "C" through the full input → JS → setState → repaint loop. In the todo shot, a click on the suggestion row has just added "Water the plants".
+
 The user-facing surface is small:
 
 ```rust
@@ -68,7 +76,9 @@ The user originally suggested Hermes. Research showed no production-grade Rust e
 crates/valhalla/         publishable Rust crate (the runtime)
 packages/runtime/        @valhalla/runtime — HostConfig, components, hooks
 packages/vite-plugin/    @valhalla/vite — Vite plugin for build + dev
-examples/kanban/         the demo app (Cargo bin + React)
+examples/calculator/     four-function calculator (Cargo bin + React)
+examples/todo/           todo list with filters (Cargo bin + React)
+examples/kanban/         kitchen-sink board demo (Cargo bin + React)
 ```
 
 ## Primitives
@@ -126,7 +136,9 @@ $ cd examples/kanban && bun run build
 $ cd ../.. && cargo run -p valhalla --bin valhalla-headless -- examples/kanban/dist/bundle.js
 ```
 
-The Kanban demo renders into **534 mutation ops** on initial mount — three columns of cards, a header with switches, a detail panel with priority buttons + a checkbox, and a stats badge. Clicking a Switch (e.g. "Sort by priority") dispatches into JS, fires `setState`, re-renders, and emits the diff back as new ops (~143 in that case).
+The Kanban demo renders into **~780 mutation ops** on initial mount — three columns of cards, a header with switches, a detail panel with priority buttons + a checkbox, and a stats badge. Clicking a Switch (e.g. "Sort by priority") dispatches into JS, fires `setState`, re-renders, and emits the diff back as new ops.
+
+The calculator and todo demos are verified the same way, but as whole user flows via `--press`: pressing `7 + 8 =` leaves `"15"` in the display; adding a todo, toggling it done, and switching to the Done filter shows exactly the completed items. Every press goes through the real handler-dispatch → `setState` → re-render → ops path.
 
 This validates, end-to-end:
 
@@ -138,14 +150,14 @@ This validates, end-to-end:
 - `SceneTree::apply` builds the mirror tree.
 - Synthetic dispatch: calling `__dispatchEvent(handlerId, payload)` from Rust fires the React handler, which calls `setState`, which produces follow-up ops into the inbox.
 
-The `kanban` binary itself (`cargo run -p kanban`) compiles against `gpui` and `gpui-component` and opens a window — that part can't be visually verified in CI but the type contract is right.
+The native binaries (`cargo run -p calculator|todo|kanban`) compile against `gpui` and open a window on a real desktop. (Note for Linux: the `wayland`/`x11` cargo features on `gpui_platform` are required — Valhalla enables them — and the GPU renderer needs Vulkan, so bare containers without a driver won't boot a window even under Xvfb.)
 
 ## What's stubbed (next up)
 
 Per the [plan](.claude/plans/i-wanna-see-if-fluffy-beacon.md), V1 promises Fast Refresh, full keyboard input, and a working `<input>` field. Those land in subsequent commits:
 
 - **Fast Refresh / HMR.** The Rust loader's WebSocket bridge (`crates/valhalla/src/loader/vite.rs`) connects to Vite's HMR socket and forwards frames to JS, but the JS-side `import.meta.hot` polyfill (`packages/runtime/src/hmr.ts`) isn't yet wired into `react-refresh` — it currently just logs frames.
-- **`<input>` editing.** Renders the current `value` / `placeholder` and accepts `onClick`, but doesn't yet integrate `gpui-component::input::TextField` for cursor/typing/IME. Pure rendering of the prop bundle is correct.
+- **`<input>` editing.** Renders the current `value` / `placeholder` and accepts `onClick`, but doesn't yet wire gpui focus + key dispatch into an editable field (cursor/typing/IME). Pure rendering of the prop bundle is correct.
 - **Keyboard events.** `onKeyDown` / `onKeyUp` are routed through the prop bundle to Rust but the GPUI focus + key dispatch wiring isn't enabled yet.
 - **`free_handlers`** is implemented but not yet called on `removeChild` — handler IDs leak across re-renders for now.
 
@@ -174,12 +186,23 @@ bun install                       # installs all JS workspaces
 cargo install cargo-watch         # only needed for `bun run dev`
 ```
 
-### Run the Kanban demo
+### Run the demos
+
+Three demo apps ship in `examples/`:
+
+- **calculator** — a four-function calculator. One screen, a Pressable
+  grid, and a classic accumulator/operator state machine in ~200 lines
+  of TSX.
+- **todo** — a todo list with filter tabs, completion toggles, delete,
+  and clear-completed. (New tasks come from a suggestion queue — free
+  typing waits on the TextInput integration below.)
+- **kanban** — the kitchen sink: columns, cards, switches, badges,
+  a detail panel, and userland widget patterns.
 
 The whole loop in one command, from the repo root:
 
 ```sh
-bun run dev
+bun run dev:calculator   # or dev:todo, dev:kanban (aka bun run dev)
 ```
 
 That starts two parallel watchers:
@@ -192,33 +215,48 @@ End-to-end iteration is sub-second from save to repaint. State is lost on each r
 If you'd rather drive the two pieces yourself:
 
 ```sh
-# 1. Build the JS bundle once. Produces examples/kanban/dist/bundle.js
+# 1. Build the JS bundles once. Produces examples/*/dist/bundle.js
 bun run build
 
-# 2. Run the native binary. Opens a GPUI window with the Kanban UI.
-cargo run -p kanban
+# 2. Run a native binary. Opens a GPUI window.
+cargo run -p calculator     # or: -p todo, -p kanban
 ```
 
-The binary points at `examples/kanban/dist/bundle.js` automatically via `Bundle::Auto` + `assets_dir(...)` — no env vars needed.
+Each binary points at its own `dist/bundle.js` automatically via `Bundle::Auto` + `assets_dir(...)` — no env vars needed.
 
 > **Headless / SSH note.** GPUI needs a graphical display. Over SSH you'll need X11 forwarding (`ssh -X`) or a virtual framebuffer (`xvfb-run`). The headless smoke test below works anywhere.
 
 ### Headless smoke test (no display required)
 
-Useful in CI and for quickly verifying the JS↔Rust pipeline without opening a window. Loads the bundle, runs React, captures every mutation op, prints the resulting scene tree, then synthetically dispatches an event and prints the diff.
+Useful in CI and for quickly verifying the JS↔Rust pipeline without opening a window. Loads the bundle, runs React, captures every mutation op, and prints the resulting scene tree:
 
 ```sh
-cd examples/kanban && bun run build && cd ../..
+bun run build
 cargo run -p valhalla --bin valhalla-headless -- examples/kanban/dist/bundle.js
 ```
 
-Expect ~570 ops on initial mount and a follow-up batch after the synthetic dispatch. The output is a tagged tree like:
+The output is a tagged tree like:
 
 ```
 #1  <view> classes=["flex", "flex-col", ...] handlers={"onClick": 3}
   #2  <text> classes=["text-3xl", "text-white"]
     #3  text "Count: 0"
 ```
+
+`--press LABEL` simulates clicks after mount: it finds the pressable whose text matches LABEL in the current scene, dispatches its real handler into JS, and applies the resulting ops. This drives whole user flows end-to-end — here's the calculator computing 7 + 8 with no window:
+
+```sh
+cargo run -p valhalla --bin valhalla-headless -- \
+    examples/calculator/dist/bundle.js --quiet-ops \
+    --press 7 --press + --press 8 --press =
+# final scene shows:  #1  text "15"
+
+cargo run -p valhalla --bin valhalla-headless -- \
+    examples/todo/dist/bundle.js --quiet-ops \
+    --press Add --press "Ship the todo demo" --press Done
+```
+
+(`--quiet-ops` suppresses the per-op dump and prints just counts + trees.)
 
 ### Running tests
 
